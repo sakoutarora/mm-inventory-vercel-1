@@ -57,7 +57,9 @@ function App() {
         const edit = inventoryEdits[item.id] || {}
         const quantity = String(edit.quantity ?? item.lastQuantity ?? '').trim()
         const unit = String(edit.unit ?? item.lastUnit ?? '').trim()
-        const changed = quantity !== String(item.lastQuantity ?? '') || unit !== String(item.lastUnit ?? '')
+        const prevQuantity = String(item.lastQuantity ?? '')
+        const prevUnit = String(item.lastUnit ?? '')
+        const changed = quantity !== prevQuantity || unit !== prevUnit
         if (!changed || !quantity || !unit) return null
         return {
           itemId: item.id,
@@ -65,6 +67,8 @@ function App() {
           category: item.category,
           quantity,
           unit,
+          prevQuantity: prevQuantity || '\u2013',
+          prevUnit: prevUnit || '\u2013',
           required: item.required,
         }
       })
@@ -437,21 +441,23 @@ function App() {
                         {changedInventoryItems.length === 0 ? (
                           <div className="empty-state">No changes to review.</div>
                         ) : (
-                          <table>
-                            <thead>
-                              <tr><th>Item</th><th>Category</th><th>Quantity</th><th>Unit</th></tr>
-                            </thead>
-                            <tbody>
-                              {changedInventoryItems.map((item) => (
-                                <tr key={item.itemId}>
-                                  <td><strong>{item.name}</strong></td>
-                                  <td>{item.category}</td>
-                                  <td>{item.quantity}</td>
-                                  <td>{item.unit}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                          <div className="table-wrap">
+                            <table>
+                              <thead>
+                                <tr><th>Item</th><th>Previous</th><th></th><th>New</th></tr>
+                              </thead>
+                              <tbody>
+                                {changedInventoryItems.map((item) => (
+                                  <tr key={item.itemId}>
+                                    <td><strong>{item.name}</strong><br /><span className="review-category">{item.category}</span></td>
+                                    <td className="review-old">{item.prevQuantity} {item.prevUnit}</td>
+                                    <td className="review-arrow">{'\u2192'}</td>
+                                    <td className="review-new">{item.quantity} {item.unit}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         )}
                       </div>
                       <div className="modal-footer">
