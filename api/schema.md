@@ -120,4 +120,4 @@ This split (`inventory_current` + `inventory_updates`) is optimized for both qui
 - `lastUpdatedAt`
 - `allowedUnits`
 
-`lastUpdatedAt` is sourced from `inventory_current.updatedAt` and is `null` when an item has not been recorded yet.
+`lastUpdatedAt` is sourced from `inventory_current.updatedAt`, converted to IST, and returned in a display format like `11 Mar 2026, 02:45 PM IST`. It is `null` when an item has not been recorded yet.

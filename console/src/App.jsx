@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from './api'
+import BillsTab from './components/BillsTab'
+import FoodCostTab from './components/FoodCostTab'
+import ItemPricingTab from './components/ItemPricingTab'
+import UpdateHistoryTab from './components/UpdateHistoryTab'
 
 const MODES = [
   { id: 'inventory', label: 'Inventory', hint: 'Daily branch stock entry' },
   { id: 'dashboard', label: 'Dashboard', hint: 'Consumption & risk insights' },
-  { id: 'admin', label: 'Admin', hint: 'Master data & users' },
+  { id: 'history', label: 'Update History', hint: 'Past updates & comparison' },
+  { id: 'bills', label: 'Bills', hint: 'Bill upload & history', adminOnly: true },
+  { id: 'foodcost', label: 'Food Cost', hint: 'Cost calculation & analysis', adminOnly: true },
+  { id: 'pricing', label: 'Item Pricing', hint: 'Base price management', adminOnly: true },
+  { id: 'admin', label: 'Admin', hint: 'Master data & users', adminOnly: true },
 ]
 
 const ADMIN_SECTIONS = [
@@ -400,7 +408,7 @@ function App() {
     return <LoginScreen busy={busy} error={error} onLogin={afterLogin} />
   }
 
-  const visibleModes = MODES.filter((mode) => !(mode.id === 'admin' && session.role !== 'admin'))
+  const visibleModes = MODES.filter((mode) => !(mode.adminOnly && session.role !== 'admin'))
   const activeModeMeta = visibleModes.find((mode) => mode.id === activeTab) || visibleModes[0]
 
   function handleRefresh() {
@@ -411,6 +419,7 @@ function App() {
     }
     const fn = loaders[activeTab]
     if (fn) fn().catch((e) => setError(e.message))
+    // Bills, FoodCost, and ItemPricing tabs manage their own refresh internally
   }
 
   return (
@@ -627,6 +636,22 @@ function App() {
           <section className="panel">
             {!dashboard ? <div className="empty-state">Loading dashboard\u2026</div> : <DashboardView dashboard={dashboard} />}
           </section>
+        )}
+
+        {activeTab === 'history' && (
+          <UpdateHistoryTab session={session} />
+        )}
+
+        {activeTab === 'bills' && session.role === 'admin' && (
+          <BillsTab session={session} />
+        )}
+
+        {activeTab === 'foodcost' && session.role === 'admin' && (
+          <FoodCostTab session={session} />
+        )}
+
+        {activeTab === 'pricing' && session.role === 'admin' && (
+          <ItemPricingTab session={session} />
         )}
 
         {activeTab === 'admin' && session.role === 'admin' && (

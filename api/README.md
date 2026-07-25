@@ -59,6 +59,14 @@ Sends an SNS email alert for all `inventory_current` rows where `isBelowThreshol
 python3 crons/low_inventory_sns_alert.py
 ```
 
+### Weekly consumption report
+Prints per-item average daily consumption for inventory entries updated in the current week. The report groups by `branchCode + itemId`, sums only negative deltas as consumption, and divides by the number of distinct days each item was updated this week.
+
+```bash
+python3 crons/weekly_consumption_report.py
+python3 crons/weekly_consumption_report.py --branch-code BLR01
+```
+
 
 ## Suggested API routes
 - `POST /api/v1/auth/login`

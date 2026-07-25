@@ -30,3 +30,12 @@ def ensure_indexes(db):
     db.inventory_current.create_index([("branchId", 1), ("isBelowThreshold", 1)])
     db.inventory_updates.create_index([("branchId", 1), ("submittedAt", -1)])
     db.inventory_updates.create_index([("items.itemId", 1), ("submittedAt", -1)])
+    # Billing & Food Cost collections
+    db.suppliers.create_index("name", unique=True)
+    db.suppliers.create_index("type")
+    db.bill_item_mappings.create_index("billItemDescription", unique=True)
+    db.bill_item_mappings.create_index("hsnCode")
+    db.bill_item_mappings.create_index("inventoryItemId")
+    db.bills.create_index([("branchId", 1), ("billDate", -1)])
+    db.bills.create_index([("supplierId", 1), ("billDate", -1)])
+    db.bills.create_index([("branchId", 1), ("supplierId", 1), ("billDate", -1)])

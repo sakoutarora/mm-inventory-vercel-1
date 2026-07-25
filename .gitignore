@@ -37,6 +37,10 @@ dist/
 .vite/
 .cache/
 
+# ─── Lambda Deploy ───
+api/build/
+api/.layer-hash
+
 # ─── Python ───
 __pycache__/
 *.py[cod]

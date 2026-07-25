@@ -1,9 +1,20 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from src.lib.auth import extract_bearer_token, verify_token
 from src.lib.mongo import get_db
 from src.lib.response import json_response
 from src.lib.unit_conversion import canonical_unit, normalize_units
+
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _format_last_updated(dt):
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(IST).strftime("%d %b %Y, %I:%M %p IST")
 
 
 def _parse_branch_code(event):
@@ -59,7 +70,7 @@ def handle_get_inventory_items(event, _context):
                     "minThreshold": item.get("minThreshold"),
                     "lastQuantity": str(current.get("quantity")) if current else "",
                     "lastUnit": canonical_unit(current.get("unit")) if current else canonical_unit(item.get("defaultUnit")),
-                    "lastUpdatedAt": current.get("updatedAt") if current else None,
+                    "lastUpdatedAt": _format_last_updated(current.get("updatedAt")) if current else None,
                     "allowedUnits": normalize_units(item.get("allowedUnits", [])),
                 }
             )

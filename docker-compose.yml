@@ -1,0 +1,39 @@
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: mexicanmama
+    volumes:
+      - mongo-data:/data/db
+
+  backend:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      MONGODB_URI: mongodb://admin:mexicanmama@mongo:27017/?authSource=admin
+      MONGODB_DB: inventory
+      JWT_SECRET: rXWN2aY4WjsIotomesDXkXyrvGYbf3BpP1iQ2qMDMTn
+      JWT_EXPIRES_IN_HOURS: 48
+      PORT: 8000
+    depends_on:
+      - mongo
+
+  frontend:
+    build:
+      context: ./console
+      dockerfile: Dockerfile
+    ports:
+      - "5174:5174"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api/v1
+    depends_on:
+      - backend
+
+volumes:
+  mongo-data:
