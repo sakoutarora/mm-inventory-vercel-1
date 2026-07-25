@@ -88,10 +88,17 @@ object InventoryApiClient {
             if (responseCode in 200..299) {
                 ApiResult(true, parseMessage(responseBody, "Inventory submitted successfully."))
             } else {
-                ApiResult(false, parseMessage(responseBody, "Submission failed."))
+                val serverMessage = parseMessage(responseBody, "")
+                val message = if (serverMessage.isNotBlank()) {
+                    "Update inventory failed: $serverMessage"
+                } else {
+                    "Update inventory failed."
+                }
+                ApiResult(false, message)
             }
         } catch (e: Exception) {
-            ApiResult(false, "Submission failed: ${e.message ?: "Unknown error"}")
+            val errorMessage = e.message ?: "Unknown error"
+            ApiResult(false, "Update inventory failed: $errorMessage")
         }
     }
 

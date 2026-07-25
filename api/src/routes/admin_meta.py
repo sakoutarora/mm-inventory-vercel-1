@@ -1,6 +1,7 @@
 from src.lib.auth import extract_bearer_token, verify_token
 from src.lib.mongo import get_db
 from src.lib.response import json_response
+from src.lib.unit_conversion import canonical_unit, normalize_units
 
 
 def handle_admin_meta(event, _context):
@@ -45,8 +46,8 @@ def handle_admin_meta(event, _context):
                 "sku": row.get("sku"),
                 "name": row.get("name"),
                 "categoryId": str(row.get("categoryId")) if row.get("categoryId") else None,
-                "defaultUnit": row.get("defaultUnit"),
-                "allowedUnits": row.get("allowedUnits", []),
+                "defaultUnit": canonical_unit(row.get("defaultUnit")),
+                "allowedUnits": normalize_units(row.get("allowedUnits", [])),
                 "minThreshold": row.get("minThreshold", 0),
                 "required": bool(row.get("isRequired")),
                 "active": bool(row.get("isActive", True)),

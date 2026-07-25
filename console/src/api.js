@@ -21,8 +21,14 @@ export const api = {
   login: (body) => request('/auth/login', { method: 'POST', body }),
   getInventoryItems: (branchCode, token) =>
     request(`/inventory/items?branchCode=${encodeURIComponent(branchCode)}`, { token }),
-  submitInventoryUpdate: (body, token) =>
-    request('/inventory/update', { method: 'POST', body, token }),
+  submitInventoryUpdate: async (body, token) => {
+    try {
+      return await request('/inventory/update', { method: 'POST', body, token })
+    } catch (error) {
+      const details = error?.message ? ` (${error.message})` : ''
+      throw new Error(`Update inventory failed${details}`)
+    }
+  },
   getDashboardSummary: (branchCode, token, days = 14) =>
     request(`/dashboard/summary?branchCode=${encodeURIComponent(branchCode)}&days=${days}`, { token }),
   getAdminMeta: (token) => request('/admin/meta', { token }),

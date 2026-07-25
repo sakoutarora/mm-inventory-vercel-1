@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from src.lib.auth import extract_bearer_token, verify_token
 from src.lib.mongo import get_db
 from src.lib.response import json_response
+from src.lib.unit_conversion import canonical_unit, normalize_units
 
 
 def _parse_branch_code(event):
@@ -57,8 +58,8 @@ def handle_get_inventory_items(event, _context):
                     "required": bool(item.get("isRequired")),
                     "minThreshold": item.get("minThreshold"),
                     "lastQuantity": str(current.get("quantity")) if current else "",
-                    "lastUnit": current.get("unit") if current else item.get("defaultUnit"),
-                    "allowedUnits": item.get("allowedUnits", []),
+                    "lastUnit": canonical_unit(current.get("unit")) if current else canonical_unit(item.get("defaultUnit")),
+                    "allowedUnits": normalize_units(item.get("allowedUnits", [])),
                 }
             )
 

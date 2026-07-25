@@ -6,6 +6,7 @@ from bson import ObjectId
 from src.lib.auth import extract_bearer_token, verify_token
 from src.lib.mongo import get_db
 from src.lib.response import json_response
+from src.lib.unit_conversion import canonical_unit, convert_to_base, normalize_units
 
 
 def _normalize_number(value):
@@ -52,7 +53,7 @@ def handle_update_inventory(event, _context):
         prepared_rows = []
         for row in items:
             item_id = row.get("itemId") or row.get("id")
-            unit = (row.get("unit") or "").strip()
+            unit = canonical_unit(row.get("unit"))
             quantity = _normalize_number(row.get("quantity"))
 
             if not item_id or not unit:
@@ -83,7 +84,7 @@ def handle_update_inventory(event, _context):
 
         for row in prepared_rows:
             item_doc = item_by_id[str(row["itemId"])]
-            allowed_units = item_doc.get("allowedUnits", [])
+            allowed_units = normalize_units(item_doc.get("allowedUnits", []))
             if row["unit"] not in allowed_units:
                 return json_response(
                     400,
@@ -93,19 +94,89 @@ def handle_update_inventory(event, _context):
             current = current_by_item_id.get(str(row["itemId"]))
             previous_quantity = float(current["quantity"]) if current else None
             previous_unit = current.get("unit") if current else None
+            previous_quantity_base = (
+                float(current["quantityBase"]) if current and current.get("quantityBase") is not None else None
+            )
+            previous_base_unit = current.get("baseUnit") if current else None
             next_version = int(current.get("version", 0)) + 1 if current else 1
 
             min_threshold = float(item_doc.get("minThreshold", 0))
+            item_default_unit = canonical_unit(item_doc.get("defaultUnit"))
             qty = float(row["quantity"])
+            qty_base, base_unit = convert_to_base(qty, row["unit"])
+            if qty_base is None or base_unit is None:
+                return json_response(400, {"message": f"Unsupported unit '{row['unit']}' for item {item_doc['name']}."})
+
+            if previous_quantity is not None and previous_quantity_base is None:
+                previous_quantity_base, previous_base_unit = convert_to_base(previous_quantity, previous_unit)
+
+            if previous_quantity is not None:
+                if previous_unit != row["unit"]:
+                    if qty_base is None:
+                        return json_response(
+                            400,
+                            {"message": f"Unsupported unit conversion for new unit '{row['unit']}'."},
+                        )
+                    if previous_quantity_base is None:
+                        return json_response(
+                            400,
+                            {
+                                "message": (
+                                    f"Unsupported unit conversion from previous unit '{previous_unit}' "
+                                    f"for item {item_doc['name']}."
+                                )
+                            },
+                        )
+                    if previous_base_unit != base_unit:
+                        return json_response(
+                            400,
+                            {
+                                "message": (
+                                    f"Unit group mismatch: cannot compare '{previous_unit}' and '{row['unit']}' "
+                                    f"for item {item_doc['name']}."
+                                )
+                            },
+                        )
+
+            min_threshold_base = min_threshold
+            converted_threshold, converted_threshold_base = convert_to_base(min_threshold, item_default_unit)
+            if converted_threshold is not None and converted_threshold_base == base_unit:
+                min_threshold_base = converted_threshold
+            threshold_for_check = min_threshold_base
+            qty_for_check = qty_base
+            is_below_threshold = qty_base < min_threshold_base
+
+            if previous_quantity is None:
+                delta_quantity = None
+                delta_quantity_base = None
+                crossed_below_threshold = qty_for_check < threshold_for_check
+            else:
+                previous_for_compare = previous_quantity_base if previous_quantity_base is not None else previous_quantity
+                delta_quantity = qty_base - previous_for_compare if previous_for_compare is not None else None
+                delta_quantity_base = (
+                    qty_base - previous_quantity_base
+                    if qty_base is not None and previous_quantity_base is not None and base_unit == previous_base_unit
+                    else None
+                )
+                crossed_below_threshold = (
+                    previous_for_compare is not None
+                    and previous_for_compare >= min_threshold_base
+                    and qty_base < min_threshold_base
+                )
 
             db.inventory_current.update_one(
                 {"branchId": branch["_id"], "itemId": row["itemId"]},
                 {
                     "$set": {
-                        "quantity": qty,
-                        "unit": row["unit"],
-                        "minThreshold": min_threshold,
-                        "isBelowThreshold": qty < min_threshold,
+                        "quantity": qty_base,
+                        "unit": base_unit,
+                        "quantityBase": qty_base,
+                        "baseUnit": base_unit,
+                        "inputQuantity": qty,
+                        "inputUnit": row["unit"],
+                        "minThreshold": min_threshold_base,
+                        "minThresholdBase": min_threshold_base,
+                        "isBelowThreshold": is_below_threshold,
                         "updatedBy": ObjectId(auth["userId"]),
                         "updatedAt": now,
                         "version": next_version,
@@ -123,15 +194,18 @@ def handle_update_inventory(event, _context):
                     "categoryId": item_doc["categoryId"],
                     "previousQuantity": previous_quantity,
                     "previousUnit": previous_unit,
-                    "newQuantity": qty,
-                    "newUnit": row["unit"],
-                    "deltaQuantity": None if previous_quantity is None else qty - previous_quantity,
-                    "minThreshold": min_threshold,
-                    "crossedBelowThreshold": (
-                        qty < min_threshold
-                        if previous_quantity is None
-                        else previous_quantity >= min_threshold and qty < min_threshold
-                    ),
+                    "previousQuantityBase": previous_quantity_base,
+                    "newQuantity": qty_base,
+                    "newUnit": base_unit,
+                    "newQuantityBase": qty_base,
+                    "baseUnit": base_unit,
+                    "deltaQuantity": delta_quantity,
+                    "deltaQuantityBase": delta_quantity_base,
+                    "inputQuantity": qty,
+                    "inputUnit": row["unit"],
+                    "minThreshold": min_threshold_base,
+                    "minThresholdBase": min_threshold_base,
+                    "crossedBelowThreshold": crossed_below_threshold,
                 }
             )
 

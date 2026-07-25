@@ -1,6 +1,7 @@
 package com.mm.inventory
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -10,6 +11,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.snackbar.Snackbar
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
@@ -112,7 +114,7 @@ class ReviewActivity : AppCompatActivity() {
             val result = InventoryApiClient.submitInventoryUpdate(request, token)
             runOnUiThread {
                 setSubmitting(false)
-                Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
+                showSubmitSnackbar(result.message, result.success)
                 if (result.success) {
                     val intent = Intent(this, LandingActivity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -134,5 +136,14 @@ class ReviewActivity : AppCompatActivity() {
         progressBar.visibility = if (submitting) View.VISIBLE else View.GONE
         submitButton.isEnabled = !submitting
         editButton.isEnabled = !submitting
+    }
+
+    private fun showSubmitSnackbar(message: String, success: Boolean) {
+        val rootView = findViewById<View>(android.R.id.content)
+        val snackbar = Snackbar.make(rootView, message, Snackbar.LENGTH_LONG)
+        val bgColor = if (success) "#0f766e" else "#b91c1c"
+        snackbar.setBackgroundTint(Color.parseColor(bgColor))
+        snackbar.setTextColor(Color.WHITE)
+        snackbar.show()
     }
 }

@@ -135,11 +135,12 @@ def handle_dashboard_summary(event, _context):
                 }
             },
             {"$unwind": "$items"},
-            {"$match": {"items.deltaQuantity": {"$lt": 0}}},
+            {"$addFields": {"effectiveDelta": {"$ifNull": ["$items.deltaQuantityBase", "$items.deltaQuantity"]}}},
+            {"$match": {"effectiveDelta": {"$lt": 0}}},
             {
                 "$group": {
                     "_id": "$items.itemId",
-                    "totalConsumed": {"$sum": {"$multiply": [-1, "$items.deltaQuantity"]}},
+                    "totalConsumed": {"$sum": {"$multiply": [-1, "$effectiveDelta"]}},
                     "daysObserved": {
                         "$addToSet": {
                             "$dateToString": {
@@ -177,13 +178,14 @@ def handle_dashboard_summary(event, _context):
             if not item:
                 continue
             current = current_by_item_id.get(item_id)
-            current_qty = float(current.get("quantity") or 0) if current else 0
+            current_qty = float(current.get("quantityBase") or current.get("quantity") or 0) if current else 0
             avg_daily = float(row.get("avgDailyConsumption") or 0)
             top_consumption.append(
                 {
                     "itemId": item_id,
                     "name": item.get("name"),
                     "sku": item.get("sku"),
+                    "consumptionUnit": current.get("baseUnit") if current else None,
                     "avgDailyConsumption": round(avg_daily, 3),
                     "totalConsumed": round(float(row.get("totalConsumed") or 0), 3),
                     "daysObserved": int(row.get("daysObserved") or 0),
@@ -200,7 +202,8 @@ def handle_dashboard_summary(event, _context):
                 }
             },
             {"$unwind": "$items"},
-            {"$match": {"items.deltaQuantity": {"$lt": 0}}},
+            {"$addFields": {"effectiveDelta": {"$ifNull": ["$items.deltaQuantityBase", "$items.deltaQuantity"]}}},
+            {"$match": {"effectiveDelta": {"$lt": 0}}},
             {
                 "$group": {
                     "_id": {
@@ -210,7 +213,7 @@ def handle_dashboard_summary(event, _context):
                             "timezone": "UTC",
                         }
                     },
-                    "consumed": {"$sum": {"$multiply": [-1, "$items.deltaQuantity"]}},
+                    "consumed": {"$sum": {"$multiply": [-1, "$effectiveDelta"]}},
                 }
             },
             {"$sort": {"_id": 1}},

@@ -42,6 +42,35 @@ class InventoryActivity : AppCompatActivity() {
         }
     }
 
+    private val unitAliases = mapOf(
+        "kg" to "kg",
+        "kgs" to "kg",
+        "g" to "gms",
+        "gm" to "gms",
+        "gms" to "gms",
+        "l" to "lt",
+        "lt" to "lt",
+        "ltr" to "lt",
+        "litre" to "lt",
+        "liter" to "lt",
+        "ml" to "ml",
+        "pc" to "pcs",
+        "pcs" to "pcs",
+        "piece" to "pcs",
+        "pieces" to "pcs",
+        "item" to "pcs",
+        "items" to "pcs",
+        "pkt" to "pkt",
+        "pkts" to "pkt",
+        "packet" to "pkt",
+        "packets" to "pkt"
+    )
+
+    private fun normalizeUnit(raw: String): String {
+        val trimmed = raw.trim().lowercase()
+        return unitAliases[trimmed] ?: trimmed
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_inventory)
@@ -126,15 +155,19 @@ class InventoryActivity : AppCompatActivity() {
                 val unitInput = row.findViewById<MaterialAutoCompleteTextView>(R.id.actvUnit)
 
                 itemName.text = item.name
-                lastValue.text = "Last recorded: ${item.lastQuantity} ${item.lastUnit}".trim()
+                lastValue.text = "Last recorded: ${item.lastQuantity} ${normalizeUnit(item.lastUnit)}".trim()
                 requiredTag.visibility = if (item.required) View.VISIBLE else View.GONE
 
                 quantityInput.setText(item.lastQuantity)
-                unitInput.setText(item.lastUnit, false)
+                unitInput.setText(normalizeUnit(item.lastUnit), false)
 
-                val unitOptions = (item.allowedUnits + item.lastUnit).filter { it.isNotBlank() }.distinct()
+                val unitOptions = (item.allowedUnits + item.lastUnit)
+                    .map { normalizeUnit(it) }
+                    .filter { it.isNotBlank() }
+                    .distinct()
                 val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, unitOptions)
                 unitInput.setAdapter(adapter)
+                unitInput.keyListener = null
 
                 editors.add(
                     ItemEditor(
@@ -156,7 +189,11 @@ class InventoryActivity : AppCompatActivity() {
 
         editors.forEach { editor ->
             val quantity = editor.quantityEditText.text.toString().trim()
-            val unit = editor.unitInput.text.toString().trim()
+            val unit = normalizeUnit(editor.unitInput.text.toString())
+            val allowedUnits = (editor.item.allowedUnits + editor.item.lastUnit)
+                .map { normalizeUnit(it) }
+                .filter { it.isNotBlank() }
+                .distinct()
 
             if (editor.item.required && (quantity.isEmpty() || unit.isEmpty())) {
                 missingRequired.add(editor.item.name)
@@ -168,8 +205,11 @@ class InventoryActivity : AppCompatActivity() {
                     invalidQuantity.add(editor.item.name)
                 }
             }
+            if (unit.isNotEmpty() && !allowedUnits.contains(unit)) {
+                invalidQuantity.add(editor.item.name)
+            }
 
-            val changed = quantity != editor.item.lastQuantity || unit != editor.item.lastUnit
+            val changed = quantity != editor.item.lastQuantity || unit != normalizeUnit(editor.item.lastUnit)
             if (changed && quantity.isNotEmpty() && unit.isNotEmpty()) {
                 updatedItems.add(
                     UpdatedInventoryItem(

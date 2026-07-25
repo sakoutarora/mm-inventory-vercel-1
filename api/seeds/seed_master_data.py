@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 from pymongo import MongoClient
 from src.lib.config import MONGODB_URI, MONGODB_DB
+from src.lib.unit_conversion import convert_to_base, normalize_units, units_share_base, canonical_unit
 
 
 def run():
@@ -51,15 +52,28 @@ def run():
         ]
 
         for item in items:
+            allowed_units = normalize_units(item["allowedUnits"])
+            default_unit = canonical_unit(item["defaultUnit"])
+            if default_unit not in allowed_units:
+                allowed_units = [default_unit] + allowed_units
+            ok, base_unit = units_share_base(allowed_units)
+            if not ok or not base_unit:
+                print(f"Skipping item with mixed units: {item['sku']}")
+                continue
+            min_threshold, threshold_base = convert_to_base(item["minThreshold"], default_unit)
+            if min_threshold is None or threshold_base != base_unit:
+                print(f"Skipping item with unsupported threshold unit: {item['sku']}")
+                continue
+
             db.items.update_one(
                 {"sku": item["sku"]},
                 {
                     "$set": {
                         "name": item["name"],
                         "categoryId": category_ids[item["categoryCode"]],
-                        "defaultUnit": item["defaultUnit"],
-                        "allowedUnits": item["allowedUnits"],
-                        "minThreshold": item["minThreshold"],
+                        "defaultUnit": base_unit,
+                        "allowedUnits": allowed_units,
+                        "minThreshold": min_threshold,
                         "isRequired": item["isRequired"],
                         "isActive": True,
                         "updatedAt": now,

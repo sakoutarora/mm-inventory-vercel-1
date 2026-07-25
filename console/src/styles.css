@@ -386,6 +386,40 @@ input::placeholder { color: var(--muted); }
   border: 1px solid var(--success-muted);
 }
 
+.app-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2000;
+  min-width: 260px;
+  max-width: min(420px, calc(100vw - 32px));
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: 0 12px 30px rgba(17, 24, 39, 0.22);
+  border: 1px solid transparent;
+  animation: toast-in 0.2s ease-out;
+}
+
+.app-toast.error {
+  background: #fff1f2;
+  color: #9f1239;
+  border-color: #fecdd3;
+}
+
+.app-toast.success {
+  background: #ecfdf5;
+  color: #065f46;
+  border-color: #bbf7d0;
+}
+
+@keyframes toast-in {
+  from { transform: translateY(6px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
 /* ─── Panel ─── */
 
 .panel {

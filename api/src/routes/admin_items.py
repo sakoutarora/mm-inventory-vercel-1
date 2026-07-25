@@ -7,17 +7,11 @@ from pymongo.errors import DuplicateKeyError
 from src.lib.auth import extract_bearer_token, verify_token
 from src.lib.mongo import get_db
 from src.lib.response import json_response
+from src.lib.unit_conversion import canonical_unit, convert_to_base, normalize_units, units_share_base
 
 
 def _normalize_units(units):
-    if not isinstance(units, list):
-        return []
-    cleaned = []
-    for raw in units:
-        unit = str(raw or "").strip().lower()
-        if unit and unit not in cleaned:
-            cleaned.append(unit)
-    return cleaned
+    return normalize_units(units)
 
 
 def _validate_min_threshold(value):
@@ -28,6 +22,22 @@ def _validate_min_threshold(value):
         return parsed
     except (TypeError, ValueError):
         return None
+
+
+def _normalize_for_storage(default_unit: str, allowed_units: list[str], min_threshold: float):
+    canonical_default = canonical_unit(default_unit)
+    if canonical_default not in allowed_units:
+        allowed_units = [canonical_default] + allowed_units
+
+    ok, base_unit = units_share_base(allowed_units)
+    if not ok or not base_unit:
+        return None, None, None, "All allowedUnits must belong to the same unit family."
+
+    min_threshold_base, threshold_base_unit = convert_to_base(min_threshold, canonical_default)
+    if min_threshold_base is None or threshold_base_unit != base_unit:
+        return None, None, None, "Unsupported unit conversion for minThreshold/defaultUnit."
+
+    return base_unit, allowed_units, min_threshold_base, None
 
 
 def _require_admin(event):
@@ -59,7 +69,7 @@ def handle_admin_create_item(event, _context):
         sku = (body.get("sku") or "").strip().upper()
         name = (body.get("name") or "").strip()
         category_code = (body.get("categoryCode") or "").strip().upper()
-        default_unit = (body.get("defaultUnit") or "").strip().lower()
+        default_unit = canonical_unit(body.get("defaultUnit"))
         allowed_units = _normalize_units(body.get("allowedUnits"))
         min_threshold = _validate_min_threshold(body.get("minThreshold"))
         is_required = bool(body.get("isRequired", False))
@@ -70,8 +80,12 @@ def handle_admin_create_item(event, _context):
             return json_response(400, {"message": "minThreshold must be a non-negative number."})
         if not default_unit:
             return json_response(400, {"message": "defaultUnit is required."})
-        if default_unit not in allowed_units:
-            allowed_units = [default_unit] + allowed_units
+
+        stored_default_unit, normalized_allowed_units, stored_threshold, normalize_error = _normalize_for_storage(
+            default_unit, allowed_units, min_threshold
+        )
+        if normalize_error:
+            return json_response(400, {"message": normalize_error})
 
         db = get_db()
         category = db.categories.find_one({"code": category_code, "isActive": True}, {"_id": 1})
@@ -83,9 +97,9 @@ def handle_admin_create_item(event, _context):
             "sku": sku,
             "name": name,
             "categoryId": category["_id"],
-            "defaultUnit": default_unit,
-            "allowedUnits": allowed_units,
-            "minThreshold": min_threshold,
+            "defaultUnit": stored_default_unit,
+            "allowedUnits": normalized_allowed_units,
+            "minThreshold": stored_threshold,
             "isRequired": is_required,
             "isActive": True,
             "createdAt": now,
@@ -106,9 +120,9 @@ def handle_admin_create_item(event, _context):
                     "sku": sku,
                     "name": name,
                     "categoryCode": category_code,
-                    "defaultUnit": default_unit,
-                    "allowedUnits": allowed_units,
-                    "minThreshold": min_threshold,
+                    "defaultUnit": stored_default_unit,
+                    "allowedUnits": normalized_allowed_units,
+                    "minThreshold": stored_threshold,
                     "isRequired": is_required,
                 },
             },
@@ -155,17 +169,18 @@ def handle_admin_update_item(event, _context):
                 return json_response(404, {"message": "Category not found."})
             updates["categoryId"] = category["_id"]
 
+        min_threshold_input = None
         if "minThreshold" in body:
-            min_threshold = _validate_min_threshold(body.get("minThreshold"))
+            min_threshold_input = _validate_min_threshold(body.get("minThreshold"))
+            min_threshold = min_threshold_input
             if min_threshold is None:
                 return json_response(400, {"message": "minThreshold must be a non-negative number."})
-            updates["minThreshold"] = min_threshold
 
         if "isRequired" in body:
             updates["isRequired"] = bool(body.get("isRequired"))
 
         if "defaultUnit" in body:
-            default_unit = (body.get("defaultUnit") or "").strip().lower()
+            default_unit = canonical_unit(body.get("defaultUnit"))
             if not default_unit:
                 return json_response(400, {"message": "defaultUnit cannot be empty."})
             updates["defaultUnit"] = default_unit
@@ -179,24 +194,33 @@ def handle_admin_update_item(event, _context):
         if not updates:
             return json_response(400, {"message": "No updatable fields provided."})
 
-        if "defaultUnit" in updates and "allowedUnits" in updates:
-            if updates["defaultUnit"] not in updates["allowedUnits"]:
-                updates["allowedUnits"] = [updates["defaultUnit"]] + updates["allowedUnits"]
-
         db = get_db()
         item = db.items.find_one({"_id": item_oid, "isActive": True}, {"_id": 1, "defaultUnit": 1, "allowedUnits": 1})
         if not item:
             return json_response(404, {"message": "Item not found."})
 
-        if "allowedUnits" in updates and "defaultUnit" not in updates:
-            existing_default = item.get("defaultUnit")
-            if existing_default and existing_default not in updates["allowedUnits"]:
-                updates["allowedUnits"] = [existing_default] + updates["allowedUnits"]
+        effective_default_unit = canonical_unit(updates.get("defaultUnit") or item.get("defaultUnit"))
+        effective_allowed_units = normalize_units(updates.get("allowedUnits") or item.get("allowedUnits", []))
+        if effective_default_unit not in effective_allowed_units:
+            effective_allowed_units = [effective_default_unit] + effective_allowed_units
 
-        if "defaultUnit" in updates and "allowedUnits" not in updates:
-            existing_units = item.get("allowedUnits", [])
-            if updates["defaultUnit"] not in existing_units:
-                updates["allowedUnits"] = [updates["defaultUnit"]] + [u for u in existing_units if u != updates["defaultUnit"]]
+        if min_threshold_input is not None:
+            stored_default_unit, normalized_allowed_units, stored_threshold, normalize_error = _normalize_for_storage(
+                effective_default_unit,
+                effective_allowed_units,
+                min_threshold_input,
+            )
+            if normalize_error:
+                return json_response(400, {"message": normalize_error})
+            updates["defaultUnit"] = stored_default_unit
+            updates["allowedUnits"] = normalized_allowed_units
+            updates["minThreshold"] = stored_threshold
+        else:
+            ok, base_unit = units_share_base(effective_allowed_units)
+            if not ok or not base_unit:
+                return json_response(400, {"message": "All allowedUnits must belong to the same unit family."})
+            updates["defaultUnit"] = base_unit
+            updates["allowedUnits"] = effective_allowed_units
 
         updates["updatedAt"] = datetime.now(timezone.utc)
 
@@ -209,7 +233,10 @@ def handle_admin_update_item(event, _context):
                     {
                         "$set": {
                             "minThreshold": updates["minThreshold"],
-                            "isBelowThreshold": {"$lt": ["$quantity", updates["minThreshold"]]},
+                            "minThresholdBase": updates["minThreshold"],
+                            "isBelowThreshold": {
+                                "$lt": [{"$ifNull": ["$quantityBase", "$quantity"]}, updates["minThreshold"]]
+                            },
                             "updatedAt": updates["updatedAt"],
                         }
                     }

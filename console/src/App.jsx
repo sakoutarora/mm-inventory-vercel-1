@@ -13,6 +13,69 @@ const ADMIN_SECTIONS = [
   { id: 'users', label: 'Users' },
 ]
 
+const UNIT_ALIASES = {
+  kg: 'kg',
+  kgs: 'kg',
+  g: 'gms',
+  gm: 'gms',
+  gms: 'gms',
+  lt: 'lt',
+  ltr: 'lt',
+  l: 'lt',
+  litre: 'lt',
+  liter: 'lt',
+  ml: 'ml',
+  pc: 'pcs',
+  pcs: 'pcs',
+  piece: 'pcs',
+  pieces: 'pcs',
+  item: 'pcs',
+  items: 'pcs',
+  pkt: 'pkt',
+  pkts: 'pkt',
+  packet: 'pkt',
+  packets: 'pkt',
+}
+
+const UNIT_BASE = {
+  kg: 'gms',
+  gms: 'gms',
+  lt: 'ml',
+  ml: 'ml',
+  pcs: 'pcs',
+  pkt: 'pkt',
+}
+
+function normalizeUnit(unit) {
+  const raw = String(unit || '').trim().toLowerCase()
+  return UNIT_ALIASES[raw] || raw
+}
+
+function parseAdminUnits(defaultUnitRaw, allowedUnitsRaw) {
+  const defaultUnit = normalizeUnit(defaultUnitRaw)
+  const allowedUnits = allowedUnitsRaw
+    .split(',')
+    .map((u) => normalizeUnit(u))
+    .filter(Boolean)
+    .filter((u, i, arr) => arr.indexOf(u) === i)
+
+  if (!defaultUnit || !UNIT_BASE[defaultUnit]) {
+    return { error: 'Default Unit is invalid. Use one of: kg, gms, lt, ml, pcs, pkt.' }
+  }
+
+  const mergedAllowed = allowedUnits.includes(defaultUnit) ? allowedUnits : [defaultUnit, ...allowedUnits]
+  if (mergedAllowed.some((u) => !UNIT_BASE[u])) {
+    return { error: 'Allowed Units contains unsupported values. Use: kg, gms, lt, ml, pcs, pkt.' }
+  }
+
+  const base = UNIT_BASE[defaultUnit]
+  if (mergedAllowed.some((u) => UNIT_BASE[u] !== base)) {
+    return { error: 'Allowed Units must be from one unit family only (weight, volume, pieces, or packets).' }
+  }
+
+  return { defaultUnit, allowedUnits: mergedAllowed }
+}
+
 function App() {
   const [session, setSession] = useState(null)
   const [activeTab, setActiveTab] = useState('inventory')
@@ -22,6 +85,7 @@ function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [toast, setToast] = useState(null)
 
   const [inventoryItems, setInventoryItems] = useState([])
   const [inventoryEdits, setInventoryEdits] = useState({})
@@ -87,6 +151,12 @@ function App() {
     const t = setTimeout(() => setNotice(''), 4000)
     return () => clearTimeout(t)
   }, [notice])
+
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 3500)
+    return () => clearTimeout(t)
+  }, [toast])
 
   async function loadInventory() {
     if (!session) return
@@ -156,12 +226,12 @@ function App() {
 
     if (missingRequired.length) {
       setError(`Required items missing or invalid: ${[...new Set(missingRequired)].join(', ')}`)
-      return
+      return false
     }
 
     if (!changedInventoryItems.length) {
       setError('No changed items to submit.')
-      return
+      return false
     }
 
     setBusy(true)
@@ -174,10 +244,16 @@ function App() {
         },
         session.token
       )
-      setNotice(`Submitted ${changedInventoryItems.length} inventory update${changedInventoryItems.length > 1 ? 's' : ''}.`)
+      const successMessage = `Submitted ${changedInventoryItems.length} inventory update${changedInventoryItems.length > 1 ? 's' : ''}.`
+      setNotice(successMessage)
+      setToast({ type: 'success', message: successMessage })
       await Promise.all([loadInventory(), loadDashboard()])
+      return true
     } catch (err) {
-      setError(err.message)
+      const message = err?.message || 'Update inventory failed.'
+      setError(message)
+      setToast({ type: 'error', message })
+      return false
     } finally {
       setBusy(false)
     }
@@ -209,6 +285,11 @@ function App() {
 
   async function submitNewItem(event) {
     event.preventDefault()
+    const parsedUnits = parseAdminUnits(newItemForm.defaultUnit, newItemForm.allowedUnits)
+    if (parsedUnits.error) {
+      setError(parsedUnits.error)
+      return
+    }
     setBusy(true)
     setError('')
     setNotice('')
@@ -217,10 +298,8 @@ function App() {
         {
           ...newItemForm,
           minThreshold: Number(newItemForm.minThreshold),
-          allowedUnits: newItemForm.allowedUnits
-            .split(',')
-            .map((u) => u.trim())
-            .filter(Boolean),
+          defaultUnit: parsedUnits.defaultUnit,
+          allowedUnits: parsedUnits.allowedUnits,
         },
         session.token
       )
@@ -248,6 +327,11 @@ function App() {
       setError('Select an item to edit first.')
       return
     }
+    const parsedUnits = parseAdminUnits(editItemForm.defaultUnit, editItemForm.allowedUnits)
+    if (parsedUnits.error) {
+      setError(parsedUnits.error)
+      return
+    }
 
     setBusy(true)
     setError('')
@@ -257,11 +341,8 @@ function App() {
         {
           itemId: editItemId,
           minThreshold: Number(editItemForm.minThreshold),
-          defaultUnit: editItemForm.defaultUnit,
-          allowedUnits: editItemForm.allowedUnits
-            .split(',')
-            .map((u) => u.trim())
-            .filter(Boolean),
+          defaultUnit: parsedUnits.defaultUnit,
+          allowedUnits: parsedUnits.allowedUnits,
         },
         session.token
       )
@@ -374,6 +455,7 @@ function App() {
 
         {error && <div className="banner error">{error}</div>}
         {notice && <div className="banner success">{notice}</div>}
+        {toast && <div className={`app-toast ${toast.type}`}>{toast.message}</div>}
 
         {activeTab === 'inventory' && (
           <section className="panel">
@@ -465,8 +547,10 @@ function App() {
                         <button
                           disabled={busy || !changedInventoryItems.length}
                           onClick={async () => {
-                            await handleSubmitInventory()
-                            setReviewOpen(false)
+                            const success = await handleSubmitInventory()
+                            if (success) {
+                              setReviewOpen(false)
+                            }
                           }}
                         >
                           {busy ? 'Submitting\u2026' : `Submit ${changedInventoryItems.length} Change${changedInventoryItems.length !== 1 ? 's' : ''}`}
@@ -544,11 +628,11 @@ function App() {
                   </div>
                   <div className="field">
                     <label>Default Unit</label>
-                    <input placeholder="e.g. kg" value={newItemForm.defaultUnit} onChange={(e) => setNewItemForm((p) => ({ ...p, defaultUnit: e.target.value }))} />
+                    <input placeholder="kg, gms, lt, ml, pcs, pkt" value={newItemForm.defaultUnit} onChange={(e) => setNewItemForm((p) => ({ ...p, defaultUnit: e.target.value }))} />
                   </div>
                   <div className="field">
                     <label>Allowed Units <span className="hint">(comma separated)</span></label>
-                    <input placeholder="e.g. kg, g, pcs" value={newItemForm.allowedUnits} onChange={(e) => setNewItemForm((p) => ({ ...p, allowedUnits: e.target.value }))} />
+                    <input placeholder="e.g. kg, gms" value={newItemForm.allowedUnits} onChange={(e) => setNewItemForm((p) => ({ ...p, allowedUnits: e.target.value }))} />
                   </div>
                   <div className="field">
                     <label>Min Threshold</label>
@@ -592,11 +676,11 @@ function App() {
                   </div>
                   <div className="field">
                     <label>Default Unit</label>
-                    <input placeholder="e.g. kg" value={editItemForm.defaultUnit} onChange={(e) => setEditItemForm((p) => ({ ...p, defaultUnit: e.target.value }))} />
+                    <input placeholder="kg, gms, lt, ml, pcs, pkt" value={editItemForm.defaultUnit} onChange={(e) => setEditItemForm((p) => ({ ...p, defaultUnit: e.target.value }))} />
                   </div>
                   <div className="field">
                     <label>Allowed Units <span className="hint">(comma separated)</span></label>
-                    <input placeholder="e.g. kg, g, pcs" value={editItemForm.allowedUnits} onChange={(e) => setEditItemForm((p) => ({ ...p, allowedUnits: e.target.value }))} />
+                    <input placeholder="e.g. kg, gms" value={editItemForm.allowedUnits} onChange={(e) => setEditItemForm((p) => ({ ...p, allowedUnits: e.target.value }))} />
                   </div>
                   <div className="form-actions">
                     <button disabled={busy || !editItemId}>{busy ? 'Updating\u2026' : 'Update Item'}</button>
