@@ -59,6 +59,7 @@ def handle_get_inventory_items(event, _context):
                     "minThreshold": item.get("minThreshold"),
                     "lastQuantity": str(current.get("quantity")) if current else "",
                     "lastUnit": canonical_unit(current.get("unit")) if current else canonical_unit(item.get("defaultUnit")),
+                    "lastUpdatedAt": current.get("updatedAt") if current else None,
                     "allowedUnits": normalize_units(item.get("allowedUnits", [])),
                 }
             )

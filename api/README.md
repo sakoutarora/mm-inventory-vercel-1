@@ -25,6 +25,8 @@ Use `.env.example` values as reference:
 - `MONGODB_DB`
 - `JWT_SECRET`
 - `JWT_EXPIRES_IN_HOURS`
+- `AWS_REGION` (for SNS cron)
+- `SNS_TOPIC_ARN` (for SNS cron)
 
 ## Lambda handler
 - `src/lambda_function.lambda_handler` (single entrypoint that routes by `method + path`)
@@ -48,6 +50,15 @@ python run_seed.py master
 ./seeds/ec2_seed_users.sh
 ./seeds/ec2_seed_master.sh
 ```
+
+## Cron scripts
+### Low inventory SNS alert
+Sends an SNS email alert for all `inventory_current` rows where `isBelowThreshold=true`, including current qty and min threshold.
+
+```bash
+python3 crons/low_inventory_sns_alert.py
+```
+
 
 ## Suggested API routes
 - `POST /api/v1/auth/login`

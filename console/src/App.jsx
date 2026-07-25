@@ -51,6 +51,19 @@ function normalizeUnit(unit) {
   return UNIT_ALIASES[raw] || raw
 }
 
+function formatLastUpdated(value) {
+  if (!value || String(value).toLowerCase() === 'null') return 'Never'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return new Intl.DateTimeFormat('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed)
+}
+
 function parseAdminUnits(defaultUnitRaw, allowedUnitsRaw) {
   const defaultUnit = normalizeUnit(defaultUnitRaw)
   const allowedUnits = allowedUnitsRaw
@@ -87,6 +100,7 @@ function App() {
   const [notice, setNotice] = useState('')
   const [toast, setToast] = useState(null)
   const [collapsedCategories, setCollapsedCategories] = useState({})
+  const [inventorySearch, setInventorySearch] = useState('')
 
   const [inventoryItems, setInventoryItems] = useState([])
   const [inventoryEdits, setInventoryEdits] = useState({})
@@ -109,12 +123,21 @@ function App() {
 
   const groupedInventory = useMemo(() => {
     const group = {}
-    for (const item of inventoryItems) {
+    const normalizedQuery = inventorySearch.trim().toLowerCase()
+    const visibleItems = normalizedQuery
+      ? inventoryItems.filter((item) =>
+          [item.name, item.sku, item.category]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(normalizedQuery))
+        )
+      : inventoryItems
+
+    for (const item of visibleItems) {
       if (!group[item.category]) group[item.category] = []
       group[item.category].push(item)
     }
     return group
-  }, [inventoryItems])
+  }, [inventoryItems, inventorySearch])
 
   const changedInventoryItems = useMemo(() => {
     return inventoryItems
@@ -464,6 +487,22 @@ function App() {
               <div className="empty-state">No inventory items found for this branch.</div>
             ) : (
               <>
+                <div className="inventory-toolbar">
+                  <input
+                    type="search"
+                    placeholder="Search by item, SKU, or category"
+                    value={inventorySearch}
+                    onChange={(e) => setInventorySearch(e.target.value)}
+                  />
+                  <div className="inventory-toolbar-meta">
+                    Showing {Object.values(groupedInventory).reduce((count, items) => count + items.length, 0)} of {inventoryItems.length} items
+                  </div>
+                </div>
+
+                {Object.keys(groupedInventory).length === 0 && (
+                  <div className="empty-state">No items match "{inventorySearch.trim()}".</div>
+                )}
+
                 {Object.entries(groupedInventory).map(([category, items]) => {
                   const isCollapsed = collapsedCategories[category] ?? true
                   return (
@@ -494,7 +533,9 @@ function App() {
                               <strong>{item.name}</strong>
                               {item.required && <span className="required-badge">Required</span>}
                             </div>
+                            <span className="item-sku">{item.sku || '\u2013'}</span>
                             <span className="last-value">Last: {item.lastQuantity || '\u2013'} {item.lastUnit || '\u2013'}</span>
+                            <span className="last-updated">Updated: {formatLastUpdated(item.lastUpdatedAt)}</span>
                             <div className="field-row">
                               <input
                                 type="number"

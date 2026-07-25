@@ -505,6 +505,24 @@ input::placeholder { color: var(--muted); }
   margin: 0 auto;
 }
 
+.inventory-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.inventory-toolbar input {
+  max-width: 420px;
+}
+
+.inventory-toolbar-meta {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .item-card {
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -544,11 +562,28 @@ input::placeholder { color: var(--muted); }
   flex-shrink: 0;
 }
 
+.item-card .item-sku,
 .item-card .last-value {
   color: var(--muted);
   font-size: 12px;
   display: block;
-  margin: 4px 0 8px;
+}
+
+.item-card .item-sku {
+  margin: 6px 0 0;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.item-card .last-value {
+  margin: 4px 0 2px;
+}
+
+.item-card .last-updated {
+  color: var(--muted);
+  font-size: 12px;
+  display: block;
+  margin: 0 0 8px;
 }
 
 .field-row {
@@ -1060,6 +1095,19 @@ tr:last-child td { border-bottom: none; }
   .admin-grid {
     grid-template-columns: 1fr;
     max-width: none;
+  }
+
+  .inventory-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inventory-toolbar input {
+    max-width: none;
+  }
+
+  .inventory-toolbar-meta {
+    white-space: normal;
   }
 
   /* Smaller KPI values */

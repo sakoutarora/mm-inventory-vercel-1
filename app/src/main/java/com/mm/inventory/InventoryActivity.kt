@@ -4,6 +4,8 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.ArrayAdapter
@@ -16,6 +18,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.textfield.MaterialAutoCompleteTextView
+import java.time.OffsetDateTime
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.Executors
@@ -28,13 +31,17 @@ class InventoryActivity : AppCompatActivity() {
     private lateinit var contentScrollView: ScrollView
     private lateinit var categoryContainer: LinearLayout
     private lateinit var reviewButton: Button
+    private lateinit var searchInput: EditText
 
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val dateTimeFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm:ss a")
+    private val lastUpdatedFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a")
 
-    private val editors = mutableListOf<ItemEditor>()
+    private val inventoryItems = mutableListOf<InventoryItem>()
+    private val inventoryEdits = mutableMapOf<String, InventoryEdit>()
     private val categoryExpandedState = mutableMapOf<String, Boolean>()
+    private var searchQuery: String = ""
     private val dateTimeUpdater = object : Runnable {
         override fun run() {
             val now = LocalDateTime.now().format(dateTimeFormatter)
@@ -88,9 +95,23 @@ class InventoryActivity : AppCompatActivity() {
         contentScrollView = findViewById(R.id.scrollContent)
         categoryContainer = findViewById(R.id.categoryContainer)
         reviewButton = findViewById(R.id.btnReview)
+        searchInput = findViewById(R.id.etSearch)
 
         mainHandler.post(dateTimeUpdater)
         fetchAndRenderInventory()
+
+        searchInput.addTextChangedListener(
+            object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    searchQuery = s?.toString().orEmpty()
+                    renderItems()
+                }
+
+                override fun afterTextChanged(s: Editable?) = Unit
+            }
+        )
 
         reviewButton.setOnClickListener {
             reviewUpdates()
@@ -113,7 +134,10 @@ class InventoryActivity : AppCompatActivity() {
             runOnUiThread {
                 showLoading(false)
                 if (result.success) {
-                    renderItems(result.items)
+                    inventoryItems.clear()
+                    inventoryItems.addAll(result.items)
+                    inventoryEdits.clear()
+                    renderItems()
                 } else {
                     Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
                     if (result.message.contains("token", ignoreCase = true)
@@ -128,12 +152,21 @@ class InventoryActivity : AppCompatActivity() {
         }
     }
 
-    private fun renderItems(items: List<InventoryItem>) {
+    private fun renderItems() {
         categoryContainer.removeAllViews()
-        editors.clear()
+        val items = filteredInventoryItems()
 
         if (items.isEmpty()) {
-            Toast.makeText(this, "No inventory items found.", Toast.LENGTH_SHORT).show()
+            val emptyView = TextView(this).apply {
+                text = if (inventoryItems.isEmpty()) {
+                    "No inventory items found."
+                } else {
+                    "No items match \"$searchQuery\"."
+                }
+                textSize = 16f
+                setPadding(8, 24, 8, 8)
+            }
+            categoryContainer.addView(emptyView)
             return
         }
 
@@ -157,16 +190,19 @@ class InventoryActivity : AppCompatActivity() {
 
                 val itemName = row.findViewById<TextView>(R.id.tvItemName)
                 val lastValue = row.findViewById<TextView>(R.id.tvLastValue)
+                val lastUpdatedAt = row.findViewById<TextView>(R.id.tvLastUpdatedAt)
                 val requiredTag = row.findViewById<TextView>(R.id.tvRequiredTag)
                 val quantityInput = row.findViewById<EditText>(R.id.etQuantity)
                 val unitInput = row.findViewById<MaterialAutoCompleteTextView>(R.id.actvUnit)
 
                 itemName.text = item.name
                 lastValue.text = "Last recorded: ${item.lastQuantity} ${normalizeUnit(item.lastUnit)}".trim()
+                lastUpdatedAt.text = buildLastUpdatedText(item.lastUpdatedAt)
                 requiredTag.visibility = if (item.required) View.VISIBLE else View.GONE
 
-                quantityInput.setText(item.lastQuantity)
-                unitInput.setText(normalizeUnit(item.lastUnit), false)
+                val currentEdit = inventoryEdits[item.id] ?: InventoryEdit(item.lastQuantity, normalizeUnit(item.lastUnit))
+                quantityInput.setText(currentEdit.quantity)
+                unitInput.setText(currentEdit.unit, false)
 
                 val unitOptions = (item.allowedUnits + item.lastUnit)
                     .map { normalizeUnit(it) }
@@ -176,13 +212,28 @@ class InventoryActivity : AppCompatActivity() {
                 unitInput.setAdapter(adapter)
                 unitInput.keyListener = null
 
-                editors.add(
-                    ItemEditor(
-                        item = item,
-                        quantityEditText = quantityInput,
-                        unitInput = unitInput
-                    )
+                quantityInput.addTextChangedListener(
+                    object : TextWatcher {
+                        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+
+                        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                            updateInventoryEdit(item.id, quantity = s?.toString().orEmpty())
+                        }
+
+                        override fun afterTextChanged(s: Editable?) = Unit
+                    }
                 )
+
+                unitInput.setOnItemClickListener { _, _, position, _ ->
+                    val selectedUnit = adapter.getItem(position).orEmpty()
+                    updateInventoryEdit(item.id, unit = selectedUnit)
+                }
+
+                unitInput.setOnFocusChangeListener { _, hasFocus ->
+                    if (!hasFocus) {
+                        updateInventoryEdit(item.id, unit = normalizeUnit(unitInput.text.toString()))
+                    }
+                }
 
                 sectionContainer.addView(row)
             }
@@ -197,6 +248,41 @@ class InventoryActivity : AppCompatActivity() {
         }
     }
 
+    private fun filteredInventoryItems(): List<InventoryItem> {
+        val query = searchQuery.trim().lowercase()
+        if (query.isBlank()) {
+            return inventoryItems
+        }
+
+        return inventoryItems.filter { item ->
+            item.name.lowercase().contains(query) ||
+                item.sku.lowercase().contains(query) ||
+                item.category.lowercase().contains(query)
+        }
+    }
+
+    private fun buildLastUpdatedText(lastUpdatedAt: String): String {
+        if (lastUpdatedAt.isBlank() || lastUpdatedAt.equals("null", ignoreCase = true)) {
+            return "Last updated: Never"
+        }
+
+        return try {
+            val parsed = OffsetDateTime.parse(lastUpdatedAt)
+            "Last updated: ${parsed.toLocalDateTime().format(lastUpdatedFormatter)}"
+        } catch (_: Exception) {
+            "Last updated: $lastUpdatedAt"
+        }
+    }
+
+    private fun updateInventoryEdit(itemId: String, quantity: String? = null, unit: String? = null) {
+        val existing = inventoryEdits[itemId]
+        val baseItem = inventoryItems.firstOrNull { it.id == itemId } ?: return
+        inventoryEdits[itemId] = InventoryEdit(
+            quantity = quantity ?: existing?.quantity ?: baseItem.lastQuantity,
+            unit = unit ?: existing?.unit ?: normalizeUnit(baseItem.lastUnit)
+        )
+    }
+
     private fun buildCategoryTitle(category: String, itemCount: Int, expanded: Boolean): String {
         val marker = if (expanded) "▲" else "▼"
         val suffix = if (itemCount == 1) "item" else "items"
@@ -208,38 +294,39 @@ class InventoryActivity : AppCompatActivity() {
         val invalidQuantity = mutableListOf<String>()
         val updatedItems = mutableListOf<UpdatedInventoryItem>()
 
-        editors.forEach { editor ->
-            val quantity = editor.quantityEditText.text.toString().trim()
-            val unit = normalizeUnit(editor.unitInput.text.toString())
-            val allowedUnits = (editor.item.allowedUnits + editor.item.lastUnit)
+        inventoryItems.forEach { item ->
+            val edit = inventoryEdits[item.id]
+            val quantity = (edit?.quantity ?: item.lastQuantity).trim()
+            val unit = normalizeUnit(edit?.unit ?: item.lastUnit)
+            val allowedUnits = (item.allowedUnits + item.lastUnit)
                 .map { normalizeUnit(it) }
                 .filter { it.isNotBlank() }
                 .distinct()
 
-            if (editor.item.required && (quantity.isEmpty() || unit.isEmpty())) {
-                missingRequired.add(editor.item.name)
+            if (item.required && (quantity.isEmpty() || unit.isEmpty())) {
+                missingRequired.add(item.name)
             }
 
             if (quantity.isNotEmpty()) {
                 val numeric = quantity.toDoubleOrNull()
                 if (numeric == null || numeric < 0) {
-                    invalidQuantity.add(editor.item.name)
+                    invalidQuantity.add(item.name)
                 }
             }
             if (unit.isNotEmpty() && !allowedUnits.contains(unit)) {
-                invalidQuantity.add(editor.item.name)
+                invalidQuantity.add(item.name)
             }
 
-            val changed = quantity != editor.item.lastQuantity || unit != normalizeUnit(editor.item.lastUnit)
+            val changed = quantity != item.lastQuantity || unit != normalizeUnit(item.lastUnit)
             if (changed && quantity.isNotEmpty() && unit.isNotEmpty()) {
                 updatedItems.add(
                     UpdatedInventoryItem(
-                        id = editor.item.id,
-                        name = editor.item.name,
-                        category = editor.item.category,
+                        id = item.id,
+                        name = item.name,
+                        category = item.category,
                         quantity = quantity,
                         unit = unit,
-                        required = editor.item.required
+                        required = item.required
                     )
                 )
             }
@@ -279,10 +366,9 @@ class InventoryActivity : AppCompatActivity() {
         contentScrollView.visibility = if (show) View.GONE else View.VISIBLE
     }
 
-    data class ItemEditor(
-        val item: InventoryItem,
-        val quantityEditText: EditText,
-        val unitInput: MaterialAutoCompleteTextView
+    data class InventoryEdit(
+        val quantity: String,
+        val unit: String
     )
 
     companion object {

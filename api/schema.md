@@ -65,6 +65,10 @@
   "itemId": "ObjectId",
   "quantity": 12,
   "unit": "kg",
+  "quantityBase": 12000,
+  "baseUnit": "gms",
+  "inputQuantity": 12,
+  "inputUnit": "kg",
   "isBelowThreshold": false,
   "updatedBy": "ObjectId",
   "updatedAt": "Date",
@@ -105,3 +109,15 @@
 ```
 
 This split (`inventory_current` + `inventory_updates`) is optimized for both quick current reads and future change-trend analytics.
+
+## Inventory API notes
+
+`GET /inventory/items` returns each item with:
+
+- `sku`
+- `lastQuantity`
+- `lastUnit`
+- `lastUpdatedAt`
+- `allowedUnits`
+
+`lastUpdatedAt` is sourced from `inventory_current.updatedAt` and is `null` when an item has not been recorded yet.

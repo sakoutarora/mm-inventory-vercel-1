@@ -21,11 +21,13 @@ object JsonMapper {
             items.add(
                 InventoryItem(
                     id = item.optString("id"),
+                    sku = item.optString("sku"),
                     name = item.optString("name"),
                     category = item.optString("category", "Other"),
                     required = item.optBoolean("required", false),
                     lastQuantity = item.optString("lastQuantity", ""),
                     lastUnit = item.optString("lastUnit", ""),
+                    lastUpdatedAt = item.optString("lastUpdatedAt", ""),
                     allowedUnits = allowedUnits
                 )
             )

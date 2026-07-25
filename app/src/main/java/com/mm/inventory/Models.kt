@@ -2,11 +2,13 @@ package com.mm.inventory
 
 data class InventoryItem(
     val id: String,
+    val sku: String,
     val name: String,
     val category: String,
     val required: Boolean,
     val lastQuantity: String,
     val lastUnit: String,
+    val lastUpdatedAt: String,
     val allowedUnits: List<String>
 )
 
