@@ -361,6 +361,7 @@ input::placeholder { color: var(--muted); }
 .refresh-label { display: none; }
 .refresh-icon { display: block; }
 
+
 /* ─── Banners ─── */
 
 .banner {
@@ -1009,11 +1010,6 @@ tr:last-child td { border-bottom: none; }
   }
 
   .login-card h1 { font-size: 20px; }
-
-  /* Review list single column */
-  .review-list {
-    grid-template-columns: 1fr;
-  }
 
   /* Admin sub-nav full width */
   .subnav {
