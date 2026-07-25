@@ -18,6 +18,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('inventory')
   const [activeAdminSection, setActiveAdminSection] = useState('categories')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -357,7 +358,13 @@ function App() {
           </div>
 
           <div className="content-actions">
-            <button className="btn-secondary" disabled={busy} onClick={handleRefresh}>Refresh</button>
+            <button className="btn-secondary refresh-btn" disabled={busy} onClick={handleRefresh} aria-label="Refresh">
+              <span className="refresh-label">Refresh</span>
+              <svg className="refresh-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 1v4h4" /><path d="M15 15v-4h-4" />
+                <path d="M13.5 6A6 6 0 0 0 3 3.5L1 5m14 6l-2 1.5A6 6 0 0 1 2.5 10" />
+              </svg>
+            </button>
           </div>
         </header>
 
@@ -410,25 +417,58 @@ function App() {
                   </div>
                 ))}
 
-                {changedInventoryItems.length > 0 && (
-                  <div className="review-block">
-                    <h3>Review changes</h3>
-                    <div className="review-list">
-                      {changedInventoryItems.map((item) => (
-                        <div key={item.itemId}>{item.name}: {item.quantity} {item.unit}</div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 <div className="submit-bar">
                   <div className="change-count">
                     <strong>{changedInventoryItems.length}</strong> item{changedInventoryItems.length !== 1 ? 's' : ''} changed
                   </div>
-                  <button disabled={busy || !changedInventoryItems.length} onClick={handleSubmitInventory}>
-                    {busy ? 'Submitting\u2026' : 'Submit Changes'}
+                  <button disabled={busy || !changedInventoryItems.length} onClick={() => setReviewOpen(true)}>
+                    Review & Submit
                   </button>
                 </div>
+
+                {reviewOpen && (
+                  <div className="modal-backdrop" onClick={() => !busy && setReviewOpen(false)}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                      <div className="modal-header">
+                        <h3>Review Changes</h3>
+                        <button className="modal-close" onClick={() => !busy && setReviewOpen(false)} aria-label="Close">{'\u2715'}</button>
+                      </div>
+                      <div className="modal-body">
+                        {changedInventoryItems.length === 0 ? (
+                          <div className="empty-state">No changes to review.</div>
+                        ) : (
+                          <table>
+                            <thead>
+                              <tr><th>Item</th><th>Category</th><th>Quantity</th><th>Unit</th></tr>
+                            </thead>
+                            <tbody>
+                              {changedInventoryItems.map((item) => (
+                                <tr key={item.itemId}>
+                                  <td><strong>{item.name}</strong></td>
+                                  <td>{item.category}</td>
+                                  <td>{item.quantity}</td>
+                                  <td>{item.unit}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                      <div className="modal-footer">
+                        <button className="btn-secondary" onClick={() => setReviewOpen(false)} disabled={busy}>Cancel</button>
+                        <button
+                          disabled={busy || !changedInventoryItems.length}
+                          onClick={async () => {
+                            await handleSubmitInventory()
+                            setReviewOpen(false)
+                          }}
+                        >
+                          {busy ? 'Submitting\u2026' : `Submit ${changedInventoryItems.length} Change${changedInventoryItems.length !== 1 ? 's' : ''}`}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </section>
@@ -696,21 +736,23 @@ function DashboardView({ dashboard }) {
         {(dashboard.criticallyLowItems || []).length === 0 ? (
           <div className="empty-state">No low stock alerts.</div>
         ) : (
-          <table>
-            <thead>
-              <tr><th>Item</th><th>Stock</th><th>Threshold</th><th>Category</th></tr>
-            </thead>
-            <tbody>
-              {dashboard.criticallyLowItems.map((row) => (
-                <tr key={row.itemId}>
-                  <td><strong>{row.name}</strong></td>
-                  <td>{row.quantity} {row.unit}</td>
-                  <td>{row.minThreshold}</td>
-                  <td>{row.category}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Item</th><th>Stock</th><th>Threshold</th><th>Category</th></tr>
+              </thead>
+              <tbody>
+                {dashboard.criticallyLowItems.map((row) => (
+                  <tr key={row.itemId}>
+                    <td><strong>{row.name}</strong></td>
+                    <td>{row.quantity} {row.unit}</td>
+                    <td>{row.minThreshold}</td>
+                    <td>{row.category}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -753,22 +795,24 @@ function DashboardView({ dashboard }) {
         {(dashboard.topConsumption || []).length === 0 ? (
           <div className="empty-state">Not enough history yet.</div>
         ) : (
-          <table>
-            <thead>
-              <tr><th>Item</th><th>Avg/Day</th><th>Total</th><th>Current Qty</th><th>Days Left</th></tr>
-            </thead>
-            <tbody>
-              {dashboard.topConsumption.map((row) => (
-                <tr key={row.itemId}>
-                  <td><strong>{row.name}</strong></td>
-                  <td>{row.avgDailyConsumption}</td>
-                  <td>{row.totalConsumed}</td>
-                  <td>{row.currentQuantity}</td>
-                  <td>{row.daysToDeplete ?? '\u2013'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Item</th><th>Avg/Day</th><th>Total</th><th>Current Qty</th><th>Days Left</th></tr>
+              </thead>
+              <tbody>
+                {dashboard.topConsumption.map((row) => (
+                  <tr key={row.itemId}>
+                    <td><strong>{row.name}</strong></td>
+                    <td>{row.avgDailyConsumption}</td>
+                    <td>{row.totalConsumed}</td>
+                    <td>{row.currentQuantity}</td>
+                    <td>{row.daysToDeplete ?? '\u2013'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
