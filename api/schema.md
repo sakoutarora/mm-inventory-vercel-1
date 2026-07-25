@@ -65,7 +65,6 @@
   "itemId": "ObjectId",
   "quantity": 12,
   "unit": "kg",
-  "minThreshold": 8,
   "isBelowThreshold": false,
   "updatedBy": "ObjectId",
   "updatedAt": "Date",

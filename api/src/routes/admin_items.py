@@ -14,7 +14,9 @@ def _normalize_units(units):
     return normalize_units(units)
 
 
-def _validate_min_threshold(value):
+def _validate_min_threshold(value, *, default_if_missing=None):
+    if value is None or (isinstance(value, str) and value.strip() == ""):
+        return default_if_missing
     try:
         parsed = float(value)
         if parsed < 0:
@@ -71,7 +73,7 @@ def handle_admin_create_item(event, _context):
         category_code = (body.get("categoryCode") or "").strip().upper()
         default_unit = canonical_unit(body.get("defaultUnit"))
         allowed_units = _normalize_units(body.get("allowedUnits"))
-        min_threshold = _validate_min_threshold(body.get("minThreshold"))
+        min_threshold = _validate_min_threshold(body.get("minThreshold"), default_if_missing=0.0)
         is_required = bool(body.get("isRequired", False))
 
         if not sku or not name or not category_code:
@@ -171,7 +173,7 @@ def handle_admin_update_item(event, _context):
 
         min_threshold_input = None
         if "minThreshold" in body:
-            min_threshold_input = _validate_min_threshold(body.get("minThreshold"))
+            min_threshold_input = _validate_min_threshold(body.get("minThreshold"), default_if_missing=0.0)
             min_threshold = min_threshold_input
             if min_threshold is None:
                 return json_response(400, {"message": "minThreshold must be a non-negative number."})
@@ -232,8 +234,6 @@ def handle_admin_update_item(event, _context):
                 [
                     {
                         "$set": {
-                            "minThreshold": updates["minThreshold"],
-                            "minThresholdBase": updates["minThreshold"],
                             "isBelowThreshold": {
                                 "$lt": [{"$ifNull": ["$quantityBase", "$quantity"]}, updates["minThreshold"]]
                             },

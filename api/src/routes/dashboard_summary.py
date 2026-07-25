@@ -23,6 +23,18 @@ def _safe_days(event, default=14, minimum=3, maximum=30):
         return default
 
 
+def _parse_threshold(value):
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+        if parsed < 0:
+            return None
+        return parsed
+    except (TypeError, ValueError):
+        return None
+
+
 def handle_dashboard_summary(event, _context):
     try:
         if event.get("httpMethod") == "OPTIONS":
@@ -58,7 +70,7 @@ def handle_dashboard_summary(event, _context):
         current_rows = list(
             db.inventory_current.find(
                 {"branchId": branch["_id"]},
-                {"_id": 0, "itemId": 1, "quantity": 1, "minThreshold": 1, "isBelowThreshold": 1, "unit": 1},
+                {"_id": 0, "itemId": 1, "quantity": 1, "isBelowThreshold": 1, "unit": 1},
             )
         )
 
@@ -66,7 +78,7 @@ def handle_dashboard_summary(event, _context):
         item_docs = list(
             db.items.find(
                 {"_id": {"$in": item_ids}},
-                {"_id": 1, "name": 1, "sku": 1, "categoryId": 1, "isActive": 1, "defaultUnit": 1},
+                {"_id": 1, "name": 1, "sku": 1, "categoryId": 1, "isActive": 1, "defaultUnit": 1, "minThreshold": 1},
             )
         ) if item_ids else []
         item_by_id = {str(doc["_id"]): doc for doc in item_docs}
@@ -91,10 +103,11 @@ def handle_dashboard_summary(event, _context):
             category_stats[category_name]["total"] += 1
 
             qty = float(row.get("quantity") or 0)
-            threshold = float(row.get("minThreshold") or 0)
+            threshold = _parse_threshold(item.get("minThreshold"))
+            # Use the precomputed flag from inventory_current for faster dashboard reads.
             is_low = bool(row.get("isBelowThreshold"))
 
-            if threshold > 0 and qty <= (threshold * 1.2):
+            if threshold is not None and threshold > 0 and qty <= (threshold * 1.2):
                 order_today_count += 1
 
             if is_low:
@@ -111,7 +124,7 @@ def handle_dashboard_summary(event, _context):
                     }
                 )
 
-        critically_low_items.sort(key=lambda x: (x["quantity"] - x["minThreshold"]))
+        critically_low_items.sort(key=lambda x: (x["quantity"] - (x["minThreshold"] or 0)))
 
         category_risk = []
         for category_name, stats in category_stats.items():

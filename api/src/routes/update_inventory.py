@@ -19,6 +19,18 @@ def _normalize_number(value):
         return None
 
 
+def _parse_threshold(value):
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+        if parsed < 0:
+            return None
+        return parsed
+    except (TypeError, ValueError):
+        return None
+
+
 def handle_update_inventory(event, _context):
     try:
         if event.get("httpMethod") == "OPTIONS":
@@ -100,7 +112,7 @@ def handle_update_inventory(event, _context):
             previous_base_unit = current.get("baseUnit") if current else None
             next_version = int(current.get("version", 0)) + 1 if current else 1
 
-            min_threshold = float(item_doc.get("minThreshold", 0))
+            min_threshold = _parse_threshold(item_doc.get("minThreshold"))
             item_default_unit = canonical_unit(item_doc.get("defaultUnit"))
             qty = float(row["quantity"])
             qty_base, base_unit = convert_to_base(qty, row["unit"])
@@ -138,18 +150,25 @@ def handle_update_inventory(event, _context):
                             },
                         )
 
-            min_threshold_base = min_threshold
-            converted_threshold, converted_threshold_base = convert_to_base(min_threshold, item_default_unit)
-            if converted_threshold is not None and converted_threshold_base == base_unit:
-                min_threshold_base = converted_threshold
+            min_threshold_base = None
+            if min_threshold is not None:
+                converted_threshold, converted_threshold_base = convert_to_base(min_threshold, item_default_unit)
+                if converted_threshold is not None and converted_threshold_base == base_unit:
+                    min_threshold_base = converted_threshold
+                else:
+                    min_threshold_base = min_threshold
             threshold_for_check = min_threshold_base
             qty_for_check = qty_base
-            is_below_threshold = qty_base < min_threshold_base
+            is_below_threshold = (
+                qty_base < min_threshold_base if min_threshold_base is not None else None
+            )
 
             if previous_quantity is None:
                 delta_quantity = None
                 delta_quantity_base = None
-                crossed_below_threshold = qty_for_check < threshold_for_check
+                crossed_below_threshold = (
+                    qty_for_check < threshold_for_check if threshold_for_check is not None else False
+                )
             else:
                 previous_for_compare = previous_quantity_base if previous_quantity_base is not None else previous_quantity
                 delta_quantity = qty_base - previous_for_compare if previous_for_compare is not None else None
@@ -160,27 +179,29 @@ def handle_update_inventory(event, _context):
                 )
                 crossed_below_threshold = (
                     previous_for_compare is not None
+                    and min_threshold_base is not None
                     and previous_for_compare >= min_threshold_base
                     and qty_base < min_threshold_base
                 )
 
+            set_fields = {
+                "quantity": qty_base,
+                "unit": base_unit,
+                "quantityBase": qty_base,
+                "baseUnit": base_unit,
+                "inputQuantity": qty,
+                "inputUnit": row["unit"],
+                "updatedBy": ObjectId(auth["userId"]),
+                "updatedAt": now,
+                "version": next_version,
+            }
+            if is_below_threshold is not None:
+                set_fields["isBelowThreshold"] = is_below_threshold
+
             db.inventory_current.update_one(
                 {"branchId": branch["_id"], "itemId": row["itemId"]},
                 {
-                    "$set": {
-                        "quantity": qty_base,
-                        "unit": base_unit,
-                        "quantityBase": qty_base,
-                        "baseUnit": base_unit,
-                        "inputQuantity": qty,
-                        "inputUnit": row["unit"],
-                        "minThreshold": min_threshold_base,
-                        "minThresholdBase": min_threshold_base,
-                        "isBelowThreshold": is_below_threshold,
-                        "updatedBy": ObjectId(auth["userId"]),
-                        "updatedAt": now,
-                        "version": next_version,
-                    },
+                    "$set": set_fields,
                     "$setOnInsert": {"createdAt": now},
                 },
                 upsert=True,
@@ -204,7 +225,6 @@ def handle_update_inventory(event, _context):
                     "inputQuantity": qty,
                     "inputUnit": row["unit"],
                     "minThreshold": min_threshold_base,
-                    "minThresholdBase": min_threshold_base,
                     "crossedBelowThreshold": crossed_below_threshold,
                 }
             )
