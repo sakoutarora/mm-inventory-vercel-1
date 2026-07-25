@@ -1,0 +1,44 @@
+service: inventory-api
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: python3.11
+  region: ap-south-1
+  environment:
+    MONGODB_URI: ${env:MONGODB_URI}
+    MONGODB_DB: ${env:MONGODB_DB, 'inventory_app'}
+    JWT_SECRET: ${env:JWT_SECRET}
+    JWT_EXPIRES_IN_HOURS: ${env:JWT_EXPIRES_IN_HOURS, '12'}
+
+functions:
+  api:
+    handler: src/lambda_function.lambda_handler
+    events:
+      - httpApi:
+          path: /api/v1/auth/login
+          method: post
+      - httpApi:
+          path: /api/v1/inventory/items
+          method: get
+      - httpApi:
+          path: /api/v1/inventory/update
+          method: post
+      - httpApi:
+          path: /api/v1/dashboard/summary
+          method: get
+      - httpApi:
+          path: /api/v1/admin/meta
+          method: get
+      - httpApi:
+          path: /api/v1/admin/categories
+          method: post
+      - httpApi:
+          path: /api/v1/admin/items
+          method: post
+      - httpApi:
+          path: /api/v1/admin/items
+          method: patch
+      - httpApi:
+          path: /api/v1/admin/users
+          method: post

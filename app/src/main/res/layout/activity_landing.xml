@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/logo_bg"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="130dp"
+        android:adjustViewBounds="true"
+        android:contentDescription="Mexican Mama logo"
+        android:scaleType="fitCenter"
+        android:src="@drawable/mm_logo_header" />
+
+    <TextView
+        android:id="@+id/tvWelcome"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="Hello"
+        android:textColor="@color/text_primary"
+        android:textSize="28sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tvBranch"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Branch"
+        android:textColor="@color/text_secondary"
+        android:textSize="18sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="Start inventory update for kitchen items"
+        android:textColor="@color/text_secondary"
+        android:textSize="16sp" />
+
+    <Button
+        android:id="@+id/btnStartUpdate"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:text="Start Inventory Update"
+        android:textAllCaps="false" />
+
+    <Button
+        android:id="@+id/btnLogout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="Logout"
+        android:textAllCaps="false" />
+
+</LinearLayout>
