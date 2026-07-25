@@ -86,6 +86,7 @@ function App() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [toast, setToast] = useState(null)
+  const [collapsedCategories, setCollapsedCategories] = useState({})
 
   const [inventoryItems, setInventoryItems] = useState([])
   const [inventoryEdits, setInventoryEdits] = useState({})
@@ -463,10 +464,26 @@ function App() {
               <div className="empty-state">No inventory items found for this branch.</div>
             ) : (
               <>
-                {Object.entries(groupedInventory).map(([category, items]) => (
+                {Object.entries(groupedInventory).map(([category, items]) => {
+                  const isCollapsed = collapsedCategories[category] ?? true
+                  return (
                   <div key={category} className="category-block">
-                    <h3 className="category-header">{category}</h3>
-                    <div className="item-grid">
+                    <button
+                      type="button"
+                      className="category-toggle"
+                      onClick={() =>
+                        setCollapsedCategories((prev) => ({ ...prev, [category]: !isCollapsed }))
+                      }
+                    >
+                      <h3 className="category-header">
+                        <span className="category-title-left">
+                          <span className={`category-arrow ${isCollapsed ? 'collapsed' : 'expanded'}`}>▼</span>
+                          <span>{category}</span>
+                        </span>
+                        <small>{items.length} item{items.length !== 1 ? 's' : ''}</small>
+                      </h3>
+                    </button>
+                    {!isCollapsed && <div className="item-grid">
                       {items.map((item) => {
                         const edit = inventoryEdits[item.id] || {}
                         const quantity = edit.quantity ?? item.lastQuantity ?? ''
@@ -499,9 +516,10 @@ function App() {
                           </div>
                         )
                       })}
-                    </div>
+                    </div>}
                   </div>
-                ))}
+                  )
+                })}
 
                 <div className="submit-bar">
                   <div className="change-count">

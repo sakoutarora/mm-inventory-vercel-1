@@ -444,14 +444,57 @@ input::placeholder { color: var(--muted); }
 }
 
 .category-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--muted);
+  color: var(--ink-secondary);
   margin: 0 0 10px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--line);
+}
+
+.category-header small {
+  font-size: 11px;
+  letter-spacing: normal;
+}
+
+.category-title-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.category-arrow {
+  display: inline-block;
+  font-size: 12px;
+  transition: transform 0.18s ease;
+}
+
+.category-arrow.expanded {
+  transform: rotate(180deg);
+}
+
+.category-toggle {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ink-secondary);
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.category-toggle:hover,
+.category-toggle:active,
+.category-toggle:focus-visible {
+  background: transparent;
+  color: var(--ink-secondary);
+  box-shadow: none;
+  transform: none;
 }
 
 .item-grid {

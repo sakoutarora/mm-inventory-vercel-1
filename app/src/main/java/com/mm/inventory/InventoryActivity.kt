@@ -34,6 +34,7 @@ class InventoryActivity : AppCompatActivity() {
     private val dateTimeFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm:ss a")
 
     private val editors = mutableListOf<ItemEditor>()
+    private val categoryExpandedState = mutableMapOf<String, Boolean>()
     private val dateTimeUpdater = object : Runnable {
         override fun run() {
             val now = LocalDateTime.now().format(dateTimeFormatter)
@@ -139,14 +140,20 @@ class InventoryActivity : AppCompatActivity() {
         val grouped = items.groupBy { it.category }
         grouped.forEach { (category, categoryItems) ->
             val categoryTitle = TextView(this).apply {
-                text = category
+                val expanded = categoryExpandedState[category] ?: false
+                text = buildCategoryTitle(category, categoryItems.size, expanded)
                 textSize = 20f
                 setPadding(8, 24, 8, 8)
             }
             categoryContainer.addView(categoryTitle)
 
+            val sectionContainer = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                visibility = if (categoryExpandedState[category] ?: false) View.VISIBLE else View.GONE
+            }
+
             categoryItems.forEach { item ->
-                val row = LayoutInflater.from(this).inflate(R.layout.item_inventory_input, categoryContainer, false)
+                val row = LayoutInflater.from(this).inflate(R.layout.item_inventory_input, sectionContainer, false)
 
                 val itemName = row.findViewById<TextView>(R.id.tvItemName)
                 val lastValue = row.findViewById<TextView>(R.id.tvLastValue)
@@ -177,9 +184,23 @@ class InventoryActivity : AppCompatActivity() {
                     )
                 )
 
-                categoryContainer.addView(row)
+                sectionContainer.addView(row)
             }
+
+            categoryTitle.setOnClickListener {
+                val nextExpanded = sectionContainer.visibility != View.VISIBLE
+                sectionContainer.visibility = if (nextExpanded) View.VISIBLE else View.GONE
+                categoryExpandedState[category] = nextExpanded
+                categoryTitle.text = buildCategoryTitle(category, categoryItems.size, nextExpanded)
+            }
+            categoryContainer.addView(sectionContainer)
         }
+    }
+
+    private fun buildCategoryTitle(category: String, itemCount: Int, expanded: Boolean): String {
+        val marker = if (expanded) "▲" else "▼"
+        val suffix = if (itemCount == 1) "item" else "items"
+        return "$marker $category ($itemCount $suffix)"
     }
 
     private fun reviewUpdates() {
