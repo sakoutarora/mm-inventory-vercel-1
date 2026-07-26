@@ -5,6 +5,19 @@ provider:
   name: aws
   runtime: python3.11
   region: ap-south-1
+  httpApi:
+    cors:
+      allowedOrigins:
+        - '*'
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+      allowedMethods:
+        - GET
+        - POST
+        - PATCH
+        - DELETE
+        - OPTIONS
   environment:
     MONGODB_URI: ${env:MONGODB_URI}
     MONGODB_DB: ${env:MONGODB_DB, 'inventory_app'}
@@ -13,20 +26,24 @@ provider:
 
 functions:
   api:
-    handler: src/lambda_function.lambda_handler
+    handler: src.lambda_function.lambda_handler
     events:
+      # Auth
       - httpApi:
           path: /api/v1/auth/login
           method: post
+      # Inventory
       - httpApi:
           path: /api/v1/inventory/items
           method: get
       - httpApi:
           path: /api/v1/inventory/update
           method: post
+      # Dashboard
       - httpApi:
           path: /api/v1/dashboard/summary
           method: get
+      # Admin
       - httpApi:
           path: /api/v1/admin/meta
           method: get
@@ -42,3 +59,60 @@ functions:
       - httpApi:
           path: /api/v1/admin/users
           method: post
+      # Suppliers
+      - httpApi:
+          path: /api/v1/suppliers
+          method: get
+      - httpApi:
+          path: /api/v1/suppliers
+          method: post
+      # Bill Mappings
+      - httpApi:
+          path: /api/v1/bill-mappings
+          method: get
+      - httpApi:
+          path: /api/v1/bill-mappings
+          method: post
+      - httpApi:
+          path: /api/v1/bill-mappings/suggest
+          method: get
+      # Item Pricing
+      - httpApi:
+          path: /api/v1/items/pricing
+          method: get
+      - httpApi:
+          path: /api/v1/items/{itemId}/base-price
+          method: patch
+      # Bills
+      - httpApi:
+          path: /api/v1/bills/parse-hyperpure
+          method: post
+      - httpApi:
+          path: /api/v1/bills/confirm
+          method: post
+      - httpApi:
+          path: /api/v1/bills
+          method: get
+      - httpApi:
+          path: /api/v1/bills/{billId}
+          method: get
+      - httpApi:
+          path: /api/v1/bills/{billId}
+          method: patch
+      - httpApi:
+          path: /api/v1/bills/{billId}/download-url
+          method: get
+      # Inventory Snapshots & Food Cost
+      - httpApi:
+          path: /api/v1/inventory-updates/snapshots
+          method: get
+      - httpApi:
+          path: /api/v1/food-cost
+          method: get
+      # Update History
+      - httpApi:
+          path: /api/v1/inventory-updates/history
+          method: get
+      - httpApi:
+          path: /api/v1/inventory-updates/{updateId}
+          method: get

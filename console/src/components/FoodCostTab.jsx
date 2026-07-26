@@ -23,6 +23,19 @@ export default function FoodCostTab({ session }) {
 
   useEffect(() => { loadSnapshots(); checkBasePrices() }, [])
 
+  // Browser back button support
+  useEffect(() => {
+    function onPopState() {
+      if (showAddBill) {
+        setShowAddBill(false)
+      } else if (result) {
+        setResult(null)
+      }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [showAddBill, result])
+
   async function loadSnapshots() {
     setLoading(true)
     setError('')
@@ -58,6 +71,7 @@ export default function FoodCostTab({ session }) {
         openingUpdateId: openingId,
         closingUpdateId: closingId,
       }, session.token)
+      history.pushState({ foodcostView: 'result' }, '')
       setResult(data)
     } catch (err) {
       setError(err.message)
@@ -69,23 +83,26 @@ export default function FoodCostTab({ session }) {
   function groupByDate(snaps) {
     const groups = {}
     for (const s of snaps) {
-      const date = s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-IN', {
-        day: '2-digit', month: 'short', year: 'numeric',
-      }) : 'Unknown'
+      // createdAtIST from API is "25 Jul 2026, 07:10 PM IST" -- extract date part
+      const date = s.createdAtIST
+        ? s.createdAtIST.split(',')[0].trim()
+        : 'Unknown'
       if (!groups[date]) groups[date] = []
       groups[date].push(s)
     }
     return groups
   }
 
-  function formatTime(iso) {
-    if (!iso) return ''
-    return new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+  function formatTime(snap) {
+    if (!snap.createdAtIST) return ''
+    // createdAtIST from API is "25 Jul 2026, 07:10 PM IST" -- extract time part
+    const parts = snap.createdAtIST.split(',')
+    return parts.length > 1 ? parts[1].replace('IST', '').trim() : ''
   }
 
   function formatDate(iso) {
     if (!iso) return '\u2013'
-    return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
   }
 
   // Inline bill add callback
@@ -115,7 +132,7 @@ export default function FoodCostTab({ session }) {
       <section className="panel">
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
           <h3>Add Bill (from Food Cost)</h3>
-          <button className="btn-secondary" onClick={() => setShowAddBill(false)}>Back to Results</button>
+          <button className="btn-secondary" onClick={() => history.back()}>Back to Results</button>
         </div>
         <BillsTab session={session} />
       </section>
@@ -129,7 +146,7 @@ export default function FoodCostTab({ session }) {
       <section className="panel">
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
           <h3>Food Cost Report</h3>
-          <button className="btn-secondary" onClick={() => setResult(null)}>Back to Picker</button>
+          <button className="btn-secondary" onClick={() => history.back()}>Back to Picker</button>
         </div>
 
         {/* Period info */}
@@ -227,7 +244,7 @@ export default function FoodCostTab({ session }) {
         <div style={{ marginTop: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h4 style={{ margin: 0 }}>Bills Included ({billsUsed.length})</h4>
-            <button className="btn-secondary" onClick={() => setShowAddBill(true)}>+ Add Bill</button>
+            <button className="btn-secondary" onClick={() => { history.pushState({ foodcostView: 'addBill' }, ''); setShowAddBill(true) }}>+ Add Bill</button>
           </div>
 
           {billsUsed.length === 0 ? (
@@ -310,7 +327,7 @@ export default function FoodCostTab({ session }) {
                     <option value="">-- Pick a snapshot --</option>
                     {grouped[openingDate].map((s) => (
                       <option key={s.id} value={s.id}>
-                        {formatTime(s.createdAt)} - by {s.updatedBy} ({s.itemCount} items)
+                        {formatTime(s)} - by {s.updatedBy} ({s.itemCount} items)
                       </option>
                     ))}
                   </select>
@@ -342,7 +359,7 @@ export default function FoodCostTab({ session }) {
                     <option value="">-- Pick a snapshot --</option>
                     {grouped[closingDate].map((s) => (
                       <option key={s.id} value={s.id}>
-                        {formatTime(s.createdAt)} - by {s.updatedBy} ({s.itemCount} items)
+                        {formatTime(s)} - by {s.updatedBy} ({s.itemCount} items)
                       </option>
                     ))}
                   </select>

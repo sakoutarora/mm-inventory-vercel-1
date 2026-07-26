@@ -1,4 +1,5 @@
 import re
+import traceback
 
 from src.lib.response import json_response
 from src.routes import (
@@ -113,13 +114,21 @@ def lambda_handler(event, context):
     method = _extract_method(event)
     path = _extract_path(event)
 
+    print(f"REQUEST {method} {path}")
+
     if method == "OPTIONS":
         return json_response(200, {"ok": True})
 
     # Try exact match first (fast path).
     handler = EXACT_ROUTES.get((method, path))
     if handler:
-        return handler(event, context)
+        try:
+            resp = handler(event, context)
+            print(f"RESPONSE {method} {path} -> {resp.get('statusCode')}")
+            return resp
+        except Exception:
+            print(f"HANDLER ERROR {method} {path}\n{traceback.format_exc()}")
+            return json_response(500, {"message": "Internal server error."})
 
     # Try parameterized routes.
     for route_method, pattern, route_handler in PARAM_ROUTES:
@@ -128,6 +137,13 @@ def lambda_handler(event, context):
         m = pattern.match(path)
         if m:
             event["pathParameters"] = m.groupdict()
-            return route_handler(event, context)
+            try:
+                resp = route_handler(event, context)
+                print(f"RESPONSE {method} {path} -> {resp.get('statusCode')}")
+                return resp
+            except Exception:
+                print(f"HANDLER ERROR {method} {path}\n{traceback.format_exc()}")
+                return json_response(500, {"message": "Internal server error."})
 
+    print(f"NO ROUTE {method} {path}")
     return json_response(404, {"message": f"No route for {method} {path}"})

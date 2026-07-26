@@ -72,6 +72,21 @@ export default function BillsTab({ session, onNavigate }) {
     return () => clearTimeout(t)
   }, [toast])
 
+  // Browser back button support for sub-views
+  useEffect(() => {
+    function onPopState(e) {
+      if (e.state?.billsView) {
+        setView(e.state.billsView)
+      } else if (view !== 'history') {
+        setView('history')
+        setReviewData(null)
+        setEditingBillId(null)
+      }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [view])
+
   // Auto-suggest mappings for unmapped items when review data loads
   useEffect(() => {
     if (!reviewData || !inventoryItems.length || suggestionsRequested.current) return
@@ -269,6 +284,7 @@ export default function BillsTab({ session, onNavigate }) {
       })
       setEditingBillId(null)
       suggestionsRequested.current = false
+      history.pushState({ billsView: 'review' }, '')
       setView('review')
     } catch (err) {
       setError(err.message)
@@ -293,6 +309,7 @@ export default function BillsTab({ session, onNavigate }) {
       supplierName: '', billDate: new Date().toISOString().slice(0, 10),
       billNumber: '', lineItems: [emptyLineItem()],
     })
+    history.pushState({ billsView: 'manual' }, '')
     setView('manual')
   }
 
@@ -401,6 +418,7 @@ export default function BillsTab({ session, onNavigate }) {
     })
     setEditingBillId(null)
     suggestionsRequested.current = false
+    history.pushState({ billsView: 'review' }, '')
     setView('review')
   }
 
@@ -456,6 +474,7 @@ export default function BillsTab({ session, onNavigate }) {
       })
       setEditingBillId(billId)
       suggestionsRequested.current = false
+      history.pushState({ billsView: 'review' }, '')
       setView('review')
     } catch (err) {
       setError(err.message)
@@ -614,9 +633,12 @@ export default function BillsTab({ session, onNavigate }) {
   if (view === 'upload') {
     return (
       <section className="panel">
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-          <h3>Upload Hyperpure Challan</h3>
-          <button className="btn-secondary" onClick={() => setView('history')}>Back</button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Upload Hyperpure Challan</h3>
+            <p style={{ color: '#64748b', fontSize: 13, margin: '4px 0 0' }}>Upload a PDF challan from Zomato Hyperpure to auto-extract line items</p>
+          </div>
+          <button className="btn-secondary" onClick={() => history.back()}>Back</button>
         </div>
         {error && <div className="banner error">{error}</div>}
 
@@ -634,18 +656,34 @@ export default function BillsTab({ session, onNavigate }) {
           }}
         >
           {uploading ? (
-            <div>
+            <div style={{ textAlign: 'center' }}>
               <div className="spinner" style={{ margin: '0 auto 12px' }} />
               <p style={{ fontSize: 18, fontWeight: 600 }}>Parsing challan...</p>
               <p style={{ color: '#64748b' }}>Extracting line items and matching inventory</p>
             </div>
           ) : (
-            <div>
-              <p style={{ fontSize: 40, marginBottom: 8 }}>&#128196;</p>
-              <p style={{ fontSize: 18, fontWeight: 600 }}>Drop Hyperpure Challan PDF here</p>
-              <p style={{ color: '#64748b', marginTop: 8 }}>or click to browse files</p>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.8 }}>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="12" y1="18" x2="12" y2="12" />
+                  <line x1="9" y1="15" x2="12" y2="12" />
+                  <line x1="15" y1="15" x2="12" y2="12" />
+                </svg>
+              </div>
+              <p style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>Drop Hyperpure Challan PDF here</p>
+              <p style={{ color: '#64748b' }}>or click to browse files</p>
+              <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 12 }}>Supports .pdf files only</p>
             </div>
           )}
+        </div>
+
+        <div style={{ marginTop: 20, padding: '16px 20px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+          <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
+            <strong>How it works:</strong> Upload your Hyperpure challan PDF and we will automatically extract all line items,
+            match them to your inventory, and let you review before saving.
+          </p>
         </div>
       </section>
     )
@@ -653,131 +691,182 @@ export default function BillsTab({ session, onNavigate }) {
 
   // Manual entry view
   if (view === 'manual') {
+    const manualGrandTotal = manualForm.lineItems.reduce((sum, li) => {
+      const qty = Number(li.quantity) || 0
+      const price = Number(li.unitPrice) || 0
+      const disc = Number(li.discount) || 0
+      const taxAmt = Number(li.taxAmount) || 0
+      return sum + (qty * price - disc + taxAmt)
+    }, 0)
+
     return (
       <section className="panel">
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-          <h3>Enter Bill Manually</h3>
-          <button className="btn-secondary" onClick={() => setView('history')}>Back</button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Add Generic Bill</h3>
+            <p style={{ color: '#64748b', fontSize: 13, margin: '4px 0 0' }}>Enter bill details and line items manually</p>
+          </div>
+          <button className="btn-secondary" onClick={() => history.back()}>Back</button>
         </div>
         {error && <div className="banner error">{error}</div>}
 
-        <div className="form-grid-3" style={{ marginBottom: 20 }}>
-          <div className="field">
-            <label>Supplier</label>
-            <SearchableSelect
-              options={supplierOptions}
-              value={manualForm.supplierName}
-              onChange={(val) => setManualForm((p) => ({ ...p, supplierName: val }))}
-              placeholder="Search or type new supplier..."
-              allowFreeText={true}
-            />
-          </div>
-          <div className="field">
-            <label>Bill Date</label>
-            <input type="date" value={manualForm.billDate}
-              onChange={(e) => setManualForm((p) => ({ ...p, billDate: e.target.value }))} />
-          </div>
-          <div className="field">
-            <label>Bill Number (optional)</label>
-            <input value={manualForm.billNumber}
-              onChange={(e) => setManualForm((p) => ({ ...p, billNumber: e.target.value }))} />
+        {/* Bill details card */}
+        <div style={{ background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', padding: 20, marginBottom: 24 }}>
+          <h4 style={{ margin: '0 0 16px', fontSize: 14, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bill Details</h4>
+          <div className="form-grid-3">
+            <div className="field">
+              <label>Supplier <span style={{ color: '#dc2626' }}>*</span></label>
+              <SearchableSelect
+                options={supplierOptions}
+                value={manualForm.supplierName}
+                onChange={(val) => setManualForm((p) => ({ ...p, supplierName: val }))}
+                placeholder="Search or type new supplier..."
+                allowFreeText={true}
+              />
+            </div>
+            <div className="field">
+              <label>Bill Date <span style={{ color: '#dc2626' }}>*</span></label>
+              <input type="date" value={manualForm.billDate}
+                onChange={(e) => setManualForm((p) => ({ ...p, billDate: e.target.value }))} />
+            </div>
+            <div className="field">
+              <label>Bill Number</label>
+              <input value={manualForm.billNumber} placeholder="e.g. INV-001"
+                onChange={(e) => setManualForm((p) => ({ ...p, billNumber: e.target.value }))} />
+            </div>
           </div>
         </div>
 
-        <h4>Line Items</h4>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Description</th><th>Qty</th><th>Unit Price</th><th>Unit</th>
-                <th>Discount</th><th>Tax %</th><th>Tax Amt</th><th>Total</th>
-                <th>Mapped Item</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {manualForm.lineItems.map((li, idx) => {
-                const qty = Number(li.quantity) || 0
-                const price = Number(li.unitPrice) || 0
-                const disc = Number(li.discount) || 0
-                const taxAmt = Number(li.taxAmount) || 0
-                const taxable = qty * price - disc
-                const total = taxable + taxAmt
-                const mappedItem = li.inventoryItemId ? inventoryItems.find((it) => it.id === li.inventoryItemId) : null
-                const mismatch = mappedItem && li.uom && hasUnitMismatch(li.uom, mappedItem.baseUnit)
-
-                return (
-                  <Fragment key={idx}>
-                    <tr>
-                      <td><input value={li.description} onChange={(e) => updateManualLineItem(idx, 'description', e.target.value)} style={{ minWidth: 150 }} /></td>
-                      <td><input type="number" value={li.quantity} onChange={(e) => updateManualLineItem(idx, 'quantity', e.target.value)} style={{ width: 70 }} /></td>
-                      <td><input type="number" value={li.unitPrice} onChange={(e) => updateManualLineItem(idx, 'unitPrice', e.target.value)} style={{ width: 80 }} /></td>
-                      <td>
-                        <select value={li.uom} onChange={(e) => updateManualLineItem(idx, 'uom', e.target.value)} style={{ width: 75 }}>
-                          <option value="">--</option>
-                          {STANDARD_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-                        </select>
-                      </td>
-                      <td><input type="number" value={li.discount} onChange={(e) => updateManualLineItem(idx, 'discount', e.target.value)} style={{ width: 70 }} /></td>
-                      <td>
-                        <select value={li.taxSlab} onChange={(e) => updateManualLineItem(idx, 'taxSlab', e.target.value)} style={{ width: 70 }}>
-                          {TAX_SLABS.map((s) => <option key={s} value={s}>{s === 'custom' ? 'Custom' : `${s}%`}</option>)}
-                        </select>
-                      </td>
-                      <td>
-                        {li.taxSlab === 'custom'
-                          ? <input type="number" value={li.taxAmount} onChange={(e) => updateManualLineItem(idx, 'taxAmount', e.target.value)} style={{ width: 70 }} />
-                          : <span>{li.taxAmount || 0}</span>
-                        }
-                      </td>
-                      <td><strong>{total.toFixed(2)}</strong></td>
-                      <td>
-                        <SearchableSelect
-                          options={inventoryItemOptions}
-                          value={li.inventoryItemId}
-                          onChange={(val) => updateManualLineItem(idx, 'inventoryItemId', val)}
-                          placeholder="Search item..."
-                          style={{ minWidth: 160 }}
-                        />
-                      </td>
-                      <td>
-                        <button className="btn-small" style={{ color: '#dc2626' }} onClick={() => removeManualLineItem(idx)}
-                          disabled={manualForm.lineItems.length <= 1}>&#10005;</button>
-                      </td>
-                    </tr>
-                    {mismatch && (
-                      <tr className="conversion-row">
-                        <td colSpan={10}>
-                          <div className="conversion-prompt">
-                            <span className="conversion-icon">&#9888;</span>
-                            <span>Unit mismatch: bill &ldquo;{li.uom}&rdquo; vs inventory &ldquo;{mappedItem.baseUnit}&rdquo;</span>
-                            <span style={{ margin: '0 8px' }}>|</span>
-                            <span>1 {li.uom} =</span>
-                            <input
-                              type="number" step="0.01" min="0"
-                              value={li.conversionFactor}
-                              onChange={(e) => updateManualLineItem(idx, 'conversionFactor', e.target.value)}
-                              style={{ width: 70, margin: '0 6px' }}
-                              placeholder="e.g. 3"
-                            />
-                            <span>{mappedItem.baseUnit}</span>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+        {/* Line items as cards */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h4 style={{ margin: 0 }}>Line Items ({manualForm.lineItems.length})</h4>
           <button className="btn-secondary" onClick={addManualLineItem}>+ Add Item</button>
-          <button className="btn-secondary" style={{ color: '#dc2626' }} onClick={clearManualLineItems}>Clear All</button>
-          <button className="btn-primary" onClick={submitManualForReview}
-            disabled={!manualForm.supplierName || manualForm.lineItems.every((li) => !li.description)}>
-            Review & Confirm
-          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {manualForm.lineItems.map((li, idx) => {
+            const qty = Number(li.quantity) || 0
+            const price = Number(li.unitPrice) || 0
+            const disc = Number(li.discount) || 0
+            const taxAmt = Number(li.taxAmount) || 0
+            const taxable = qty * price - disc
+            const total = taxable + taxAmt
+            const mappedItem = li.inventoryItemId ? inventoryItems.find((it) => it.id === li.inventoryItemId) : null
+            const mismatch = mappedItem && li.uom && hasUnitMismatch(li.uom, mappedItem.baseUnit)
+
+            return (
+              <div key={idx} style={{ background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', padding: 16, position: 'relative' }}>
+                {/* Item number & remove */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>Item {idx + 1}</span>
+                  <button className="btn-small" style={{ color: '#dc2626', opacity: manualForm.lineItems.length <= 1 ? 0.3 : 1 }}
+                    onClick={() => removeManualLineItem(idx)}
+                    disabled={manualForm.lineItems.length <= 1}>&#10005; Remove</button>
+                </div>
+
+                {/* Row 1: Description + Mapped Item */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div className="field">
+                    <label>Description <span style={{ color: '#dc2626' }}>*</span></label>
+                    <input value={li.description} onChange={(e) => updateManualLineItem(idx, 'description', e.target.value)}
+                      placeholder="e.g. Basmati Rice 5kg" />
+                  </div>
+                  <div className="field">
+                    <label>Map to Inventory Item</label>
+                    <SearchableSelect
+                      options={inventoryItemOptions}
+                      value={li.inventoryItemId}
+                      onChange={(val) => updateManualLineItem(idx, 'inventoryItemId', val)}
+                      placeholder="Search item..."
+                    />
+                  </div>
+                </div>
+
+                {/* Row 2: Qty, Unit Price, Unit, Discount */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div className="field">
+                    <label>Quantity</label>
+                    <input type="number" value={li.quantity} onChange={(e) => updateManualLineItem(idx, 'quantity', e.target.value)}
+                      placeholder="0" />
+                  </div>
+                  <div className="field">
+                    <label>Unit Price ({'\u20B9'})</label>
+                    <input type="number" value={li.unitPrice} onChange={(e) => updateManualLineItem(idx, 'unitPrice', e.target.value)}
+                      placeholder="0.00" />
+                  </div>
+                  <div className="field">
+                    <label>Unit</label>
+                    <select value={li.uom} onChange={(e) => updateManualLineItem(idx, 'uom', e.target.value)}>
+                      <option value="">Select unit</option>
+                      {STANDARD_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label>Discount ({'\u20B9'})</label>
+                    <input type="number" value={li.discount} onChange={(e) => updateManualLineItem(idx, 'discount', e.target.value)}
+                      placeholder="0" />
+                  </div>
+                </div>
+
+                {/* Row 3: Tax + Total */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                  <div className="field">
+                    <label>Tax Slab</label>
+                    <select value={li.taxSlab} onChange={(e) => updateManualLineItem(idx, 'taxSlab', e.target.value)}>
+                      {TAX_SLABS.map((s) => <option key={s} value={s}>{s === 'custom' ? 'Custom' : `${s}%`}</option>)}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label>Tax Amount ({'\u20B9'})</label>
+                    {li.taxSlab === 'custom'
+                      ? <input type="number" value={li.taxAmount} onChange={(e) => updateManualLineItem(idx, 'taxAmount', e.target.value)} placeholder="0" />
+                      : <input type="text" value={li.taxAmount || '0'} disabled style={{ background: '#f1f5f9', color: '#64748b' }} />
+                    }
+                  </div>
+                  <div className="field">
+                    <label>Line Total</label>
+                    <div style={{ padding: '8px 12px', background: '#f0fdf4', borderRadius: 6, fontWeight: 700, color: '#16a34a', border: '1px solid #bbf7d0' }}>
+                      {'\u20B9'}{total.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Unit mismatch warning */}
+                {mismatch && (
+                  <div style={{ marginTop: 12, padding: '10px 14px', background: '#fffbeb', borderRadius: 8, border: '1px solid #fde68a', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ color: '#d97706' }}>&#9888;</span>
+                    <span style={{ fontSize: 13 }}>Unit mismatch: bill &ldquo;{li.uom}&rdquo; vs inventory &ldquo;{mappedItem.baseUnit}&rdquo;</span>
+                    <span style={{ color: '#94a3b8' }}>|</span>
+                    <span style={{ fontSize: 13 }}>1 {li.uom} =</span>
+                    <input
+                      type="number" step="0.01" min="0"
+                      value={li.conversionFactor}
+                      onChange={(e) => updateManualLineItem(idx, 'conversionFactor', e.target.value)}
+                      style={{ width: 70 }}
+                      placeholder="e.g. 3"
+                    />
+                    <span style={{ fontSize: 13 }}>{mappedItem.baseUnit}</span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Footer with totals and actions */}
+        <div style={{ marginTop: 20, padding: '16px 20px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <span style={{ fontSize: 13, color: '#64748b' }}>Grand Total: </span>
+            <span style={{ fontSize: 20, fontWeight: 700 }}>{'\u20B9'}{manualGrandTotal.toFixed(2)}</span>
+            <span style={{ fontSize: 13, color: '#94a3b8', marginLeft: 8 }}>({manualForm.lineItems.length} item{manualForm.lineItems.length !== 1 ? 's' : ''})</span>
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="btn-secondary" style={{ color: '#dc2626' }} onClick={clearManualLineItems}>Clear All</button>
+            <button className="btn-primary" onClick={submitManualForReview}
+              disabled={!manualForm.supplierName || manualForm.lineItems.every((li) => !li.description)}>
+              Review & Confirm
+            </button>
+          </div>
         </div>
       </section>
     )
@@ -792,7 +881,7 @@ export default function BillsTab({ session, onNavigate }) {
       <section className="panel">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h3 style={{ margin: 0 }}>{editingBillId ? 'Edit Bill' : 'Review & Map Bill'}</h3>
-          <button className="btn-secondary" onClick={() => { setView('history'); setReviewData(null); setEditingBillId(null) }}>Cancel</button>
+          <button className="btn-secondary" onClick={() => history.back()}>Cancel</button>
         </div>
         {error && <div className="banner error">{error}</div>}
 
@@ -960,7 +1049,7 @@ export default function BillsTab({ session, onNavigate }) {
             </span>
           </div>
           <div style={{ display: 'flex', gap: 12 }}>
-            <button className="btn-secondary" onClick={() => { setView('history'); setReviewData(null); setEditingBillId(null) }}>Cancel</button>
+            <button className="btn-secondary" onClick={() => history.back()}>Cancel</button>
             <button className="btn-primary" disabled={saving || unmappedCount > 0} onClick={confirmBill}>
               {saving ? 'Saving...' : editingBillId ? 'Update Bill' : 'Confirm & Save Bill'}
             </button>
@@ -1025,14 +1114,14 @@ export default function BillsTab({ session, onNavigate }) {
       {error && <div className="banner error">{error}</div>}
       {toast && <div className={`app-toast ${toast.type}`}>{toast.message}</div>}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <h3 style={{ margin: 0 }}>Bills</h3>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn-primary" onClick={() => { setError(''); setView('upload') }}>
-            Upload Hyperpure
+          <button className="btn-primary" onClick={() => { setError(''); history.pushState({ billsView: 'upload' }, ''); setView('upload') }}>
+            Upload Hyperpure PDF
           </button>
           <button className="btn-secondary" onClick={() => { setError(''); openManualEntry() }}>
-            Add Generic Bill
+            + Add Manual Bill
           </button>
         </div>
       </div>

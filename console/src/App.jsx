@@ -97,9 +97,16 @@ function parseAdminUnits(defaultUnitRaw, allowedUnitsRaw) {
   return { defaultUnit, allowedUnits: mergedAllowed }
 }
 
+const ALL_TAB_IDS = MODES.map((m) => m.id)
+
+function getTabFromHash() {
+  const hash = window.location.hash.slice(1)
+  return ALL_TAB_IDS.includes(hash) ? hash : 'inventory'
+}
+
 function App() {
   const [session, setSession] = useState(null)
-  const [activeTab, setActiveTab] = useState('inventory')
+  const [activeTab, setActiveTab] = useState(getTabFromHash)
   const [activeAdminSection, setActiveAdminSection] = useState('categories')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
@@ -189,6 +196,19 @@ function App() {
     const t = setTimeout(() => setToast(null), 3500)
     return () => clearTimeout(t)
   }, [toast])
+
+  // Browser history: sync tabs with URL hash
+  useEffect(() => {
+    if (!window.location.hash) {
+      history.replaceState(null, '', '#inventory')
+    }
+    function onPopState() {
+      const tab = getTabFromHash()
+      setActiveTab(tab)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
 
   async function loadInventory() {
     if (!session) return
@@ -439,6 +459,7 @@ function App() {
               key={mode.id}
               className={`nav-item ${mode.id === activeTab ? 'active' : ''}`}
               onClick={() => {
+                history.pushState(null, '', '#' + mode.id)
                 setActiveTab(mode.id)
                 setError('')
                 setNotice('')

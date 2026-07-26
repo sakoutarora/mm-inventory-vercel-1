@@ -5,8 +5,11 @@ set -euo pipefail
 FUNCTION_NAME="${LAMBDA_FUNCTION_NAME:-inventory-apis}"
 LAYER_NAME="${LAMBDA_LAYER_NAME:-inventory-apis-deps}"
 REGION="${AWS_REGION:-ap-south-1}"
+API_ID="${API_GATEWAY_ID:-dqrul4dok9}"
+INTEGRATION_ID="${API_GATEWAY_INTEGRATION_ID:-djkcrg4}"
 RUNTIME="python3.11"
 REQUIREMENTS="requirements.txt"
+LAMBDA_SOURCE="src/lambda_function.py"
 HASH_FILE=".layer-hash"
 BUILD_DIR="build"
 
@@ -30,16 +33,19 @@ Usage: $0 [OPTIONS]
 Deploy Lambda function code and/or dependency layer.
 
 Options:
-  --full          Build layer (if changed) + deploy code (default)
-  --code-only     Deploy function code only, skip layer
+  --full          Build layer (if changed) + deploy code + sync routes (default)
+  --code-only     Deploy function code only, skip layer and routes
   --layer-only    Force rebuild and publish layer only
+  --routes-only   Sync API Gateway routes only
   --force-layer   Force layer rebuild even if requirements unchanged
   -h, --help      Show this help
 
 Environment variables:
-  LAMBDA_FUNCTION_NAME   Lambda function name (default: inventory-apis)
-  LAMBDA_LAYER_NAME      Layer name (default: inventory-apis-deps)
-  AWS_REGION             AWS region (default: ap-south-1)
+  LAMBDA_FUNCTION_NAME          Lambda function name (default: inventory-apis)
+  LAMBDA_LAYER_NAME             Layer name (default: inventory-apis-deps)
+  AWS_REGION                    AWS region (default: ap-south-1)
+  API_GATEWAY_ID                HTTP API Gateway ID (default: dqrul4dok9)
+  API_GATEWAY_INTEGRATION_ID   Integration ID (default: djkcrg4)
 EOF
     exit 0
 }
@@ -53,6 +59,7 @@ while [[ $# -gt 0 ]]; do
         --full)        MODE="full"; shift ;;
         --code-only)   MODE="code"; shift ;;
         --layer-only)  MODE="layer"; shift ;;
+        --routes-only) MODE="routes"; shift ;;
         --force-layer) FORCE_LAYER=true; shift ;;
         -h|--help)     usage ;;
         *) fail "Unknown option: $1" ;;
@@ -171,6 +178,74 @@ get_latest_layer_arn() {
         --output text
 }
 
+# ─── API Gateway Route Sync ─────────────────────────────────────────────────
+sync_routes() {
+    [[ -f "$LAMBDA_SOURCE" ]] || fail "$LAMBDA_SOURCE not found."
+
+    info "Syncing API Gateway routes (API: $API_ID) ..."
+
+    # Extract routes from _RAW_ROUTES in lambda_function.py
+    # Matches lines like:  ("GET",   "/api/v1/inventory/items",  handler),
+    local desired_routes
+    desired_routes=$(python3 -c "
+import re
+with open('$LAMBDA_SOURCE') as f:
+    text = f.read()
+for m in re.finditer(r'\(\"(GET|POST|PATCH|PUT|DELETE)\",\s*\"([^\"]+)\"', text):
+    print(f'{m.group(1)} {m.group(2)}')
+" | sort)
+
+    if [[ -z "$desired_routes" ]]; then
+        fail "Could not parse any routes from $LAMBDA_SOURCE"
+    fi
+
+    # Get existing routes from API Gateway
+    local existing_routes
+    existing_routes=$(aws apigatewayv2 get-routes \
+        --api-id "$API_ID" \
+        --region "$REGION" \
+        --query 'Items[*].RouteKey' \
+        --output text | tr '\t' '\n' | sort)
+
+    local added=0
+
+    # Add missing method routes + their OPTIONS counterpart
+    while IFS= read -r route; do
+        local method path
+        method=$(echo "$route" | awk '{print $1}')
+        path=$(echo "$route" | awk '{print $2}')
+
+        # Add the method route if missing
+        if ! echo "$existing_routes" | grep -qF "$method $path"; then
+            aws apigatewayv2 create-route \
+                --api-id "$API_ID" \
+                --route-key "$method $path" \
+                --target "integrations/$INTEGRATION_ID" \
+                --region "$REGION" \
+                --output text --query 'RouteId' > /dev/null
+            echo "  + $method $path"
+            added=$((added + 1))
+        fi
+
+        # OPTIONS routes are handled by API Gateway CORS config (no explicit routes needed)
+    done <<< "$desired_routes"
+
+    if [[ $added -eq 0 ]]; then
+        ok "API Gateway routes already in sync"
+    else
+        ok "$added route(s) added to API Gateway"
+
+        # Deploy to prod (dev/stage have auto-deploy)
+        info "Deploying to prod stage ..."
+        aws apigatewayv2 create-deployment \
+            --api-id "$API_ID" \
+            --stage-name prod \
+            --region "$REGION" \
+            --output text --query 'DeploymentId' > /dev/null
+        ok "Prod stage deployed"
+    fi
+}
+
 # ─── Execute ─────────────────────────────────────────────────────────────────
 mkdir -p "$BUILD_DIR"
 
@@ -184,6 +259,10 @@ case "$MODE" in
     code)
         build_code
         deploy_code
+        ;;
+
+    routes)
+        sync_routes
         ;;
 
     full)
@@ -202,6 +281,8 @@ case "$MODE" in
         if [[ -n "$LAYER_ARN" ]]; then
             attach_layer "$LAYER_ARN"
         fi
+
+        sync_routes
         ;;
 esac
 
